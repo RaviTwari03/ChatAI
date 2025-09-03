@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct LoginReplicaView: View {
+struct LoginView: View {
     @State private var email: String = ""
 
     var body: some View {
@@ -58,8 +58,8 @@ struct LoginReplicaView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
-                // Continue button
-                Button(action: {}) {
+                // Continue button -> navigates to HomeReplicaView
+                NavigationLink(destination: HomeView()) {
                     Text("Continue")
                         .font(.headline)
                         .foregroundColor(.white)
@@ -173,6 +173,6 @@ private struct ProviderButton: View {
 
 struct LoginReplicaView_Previews: PreviewProvider {
     static var previews: some View {
-        LoginReplicaView()
+        LoginView()
     }
 }
