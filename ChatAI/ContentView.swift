@@ -8,17 +8,18 @@
 import SwiftUI
 
 struct ContentView: View {
+    @AppStorage("isLoggedIn") private var isLoggedIn: Bool = false
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if isLoggedIn {
+                HomeTabView()
+            } else {
+                NavigationStack { LoginGetStartedView() }
+            }
         }
-        .padding()
+        .preferredColorScheme(.dark)
     }
 }
 
-#Preview {
-    ContentView()
-}
+#Preview { ContentView() }
