@@ -1,14 +1,30 @@
+//
+//  HomeView.swift
+//  ChatAI
+//
+//  Created by Ravi Tiwari on 03/09/25.
+//
+
 import SwiftUI
 
 struct HomeView: View {
-    // API selector for the center chip
-    @State private var selectedAPI: String = "ChatGPT mini"
-    private let apiOptions: [String] = [
-        "ChatGPT mini",
-        "OpenAI Realtime",
-        "Claude",
-        "Gemini"
-    ]
+    // API selector for the center chip (driven by app registry)
+    private let providers: [APIProvider] = APIRegistry.shared.providers
+    @State private var selectedProviderId: String = APIRegistry.shared.providers.first?.id ?? ""
+    private var selectedDisplayName: String {
+        providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
+    }
+    // Draft for bottom composer and navigation trigger
+    @State private var homeDraft: String = ""
+    @State private var goToChat: Bool = false
+    // Left 2/3 slide-over
+    @State private var showSidePanel: Bool = false
+    // Alerts
+    @State private var showAlert: Bool = false
+    @State private var alertTitle: String = ""
+    @State private var alertMessage: String = ""
+    // Recents
+    @State private var recentChats: [RecentChat] = []
     var body: some View {
         ZStack {
             // Background
@@ -19,17 +35,22 @@ struct HomeView: View {
                 // Top chips row
                 HStack(spacing: 12) {
                     // Left chip
-                    CapsuleChip { Image(systemName: "ellipsis.circle") }
+                    Button(action: { withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { showSidePanel = true } }) {
+                        CapsuleChip { Image(systemName: "ellipsis.circle") }
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer(minLength: 0)
 
                     // Center chip: dropdown to switch APIs, single-line title
                     Menu {
-                        ForEach(apiOptions, id: \.self) { option in
-                            Button(option) { selectedAPI = option }
+                        ForEach(providers) { provider in
+                            Button(provider.displayName) { selectedProviderId = provider.id }
                         }
                     } label: {
                         CapsuleChip {
                             HStack(spacing: 6) {
-                                Text(selectedAPI)
+                                Text(selectedDisplayName)
                                     .font(.subheadline)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
@@ -39,7 +60,7 @@ struct HomeView: View {
                         }
                     }
 
-                    Spacer()
+                    Spacer(minLength: 0)
 
                     // Right chip
                     CapsuleChip {
@@ -60,25 +81,31 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
 
-                // Search bar
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.white.opacity(0.7))
-                    Text("Search...")
-                        .foregroundColor(.white.opacity(0.7))
-                        .font(.subheadline)
-                    Spacer()
+                // Search bar -> navigates to ChatView
+                NavigationLink {
+                    ChatView()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.white.opacity(0.7))
+                        Text("Search...")
+                            .foregroundColor(.white.opacity(0.7))
+                            .font(.subheadline)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.04))
+                            )
+                    )
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.white.opacity(0.04))
-                        )
-                )
+                .buttonStyle(.plain)
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
 
@@ -112,19 +139,35 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
 
-                // Composer bar
+                // Composer bar (editable)
                 VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        Text("Message ChatNow...")
-                            .foregroundColor(.white.opacity(0.7))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.white.opacity(0.12))
-                    )
+                    TextField("Message ChatNow...", text: $homeDraft, axis: .vertical)
+                        .lineLimit(1...4)
+                        .foregroundColor(.white)
+                        .submitLabel(.send)
+                        .onSubmit {
+                            let text = homeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !text.isEmpty { Task { await startChat() } }
+                        }
+                        .padding(.leading, 14)
+                        .padding(.trailing, 44) // room for mic/send button
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.12))
+                        )
+                        .overlay(alignment: .trailing) {
+                            let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            Button(action: {
+                                if canSend { Task { await startChat() } }
+                                // else: mic tapped (hook voice input later)
+                            }) {
+                                Image(systemName: canSend ? "paperplane.fill" : "mic.fill")
+                                    .foregroundColor(.white)
+                                    .padding(.trailing, 10)
+                            }
+                            .buttonStyle(.plain)
+                        }
 
                     HStack(spacing: 18) {
                         CapsuleSmall { Image(systemName: "plus") }
@@ -136,13 +179,154 @@ struct HomeView: View {
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
+
+                    // Hidden navigation when user hits send
+                    NavigationLink(isActive: $goToChat) {
+                        ChatView(initialText: homeDraft)
+                    } label: { EmptyView() }
+                    .onChange(of: goToChat) { active in
+                        if !active { homeDraft = "" }
+                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
             }
+
+            // MARK: - 2/3 Left Slide-Over Panel
+            if showSidePanel { sideOverlay }
         }
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(alertMessage)
+        }
+        .onChange(of: showSidePanel) { open in
+            if open { Task { await loadRecents() } }
+        }
+    }
+
+    // Slide-over overlay and panel
+    private var sideOverlay: some View {
+        GeometryReader { proxy in
+            let panelWidth = proxy.size.width * 0.66
+            ZStack(alignment: .leading) {
+                // Dimmed tappable area to close
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { showSidePanel = false } }
+
+                // Panel
+                VStack(alignment: .leading, spacing: 16) {
+                    // Search
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
+                        Text("Search")
+                            .foregroundColor(.white.opacity(0.85))
+                            .font(.subheadline)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.08))
+                    )
+
+                    // Actions
+                    VStack(alignment: .leading, spacing: 16) {
+                        menuRow(icon: "square.and.pencil", title: "New chat")
+                        menuRow(icon: "photo.on.rectangle", title: "Library")
+                        menuRow(icon: "square.grid.3x3.fill", title: "GPTs")
+                        Button {
+                            Task {
+                                let result = await SupabaseService().testConnection()
+                                switch result {
+                                case .success:
+                                    alertTitle = "Supabase Connected"
+                                    alertMessage = "Auth health endpoint returned 200."
+                                case .failure(let err):
+                                    alertTitle = "Supabase Error"
+                                    alertMessage = err.localizedDescription
+                                }
+                                showAlert = true
+                            }
+                        } label: {
+                            menuRow(icon: "checkmark.seal", title: "Check connection")
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Divider().background(Color.white.opacity(0.15))
+
+                    // Recents from Supabase
+                    VStack(alignment: .leading, spacing: 12) {
+                        if recentChats.isEmpty {
+                            Text("No recent chats")
+                                .foregroundColor(.white.opacity(0.6))
+                        } else {
+                            ForEach(recentChats) { rc in
+                                NavigationLink(destination: ChatView(initialText: rc.title)) {
+                                    HStack {
+                                        Text(rc.title)
+                                            .foregroundColor(.white)
+                                            .multilineTextAlignment(.leading)
+                                        Spacer()
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    showSidePanel = false
+                                })
+                            }
+                        }
+                    }
+                    .font(.subheadline)
+
+                    Spacer()
+                }
+                .padding(16)
+                .frame(width: panelWidth, height: proxy.size.height)
+                .background(Color.black)
+                .transition(.move(edge: .leading))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func menuRow(icon: String, title: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+            Text(title)
+            Spacer()
+        }
+        .foregroundColor(.white)
+        .font(.subheadline)
+    }
+
+    // MARK: - Supabase helpers
+    private func loadRecents() async {
+        let res = await SupabaseService().fetchRecentChats(limit: 20)
+        switch res {
+        case .success(let items):
+            recentChats = items
+        case .failure(let err):
+            alertTitle = "Recents Error"
+            alertMessage = err.localizedDescription
+            showAlert = true
+        }
+    }
+
+    private func startChat() async {
+        // Save recent, then navigate
+        let title = String(homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+        let fallback = title.isEmpty ? "New chat" : title
+        let chat = RecentChat(title: fallback)
+        _ = await SupabaseService().saveRecentChat(chat)
+        await MainActor.run {
+            goToChat = true
+        }
     }
 
     private var neonBackdrop: some View {
