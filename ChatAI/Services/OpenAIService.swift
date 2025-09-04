@@ -13,13 +13,12 @@ final class OpenAIService {
     static let shared = OpenAIService()
     private init() {}
 
-    // Read from Info.plist key OPENAI_API_KEY, fallback to provided runtime key while developing
+    // Read from Info.plist key OPENAI_API_KEY
     private var apiKey: String {
-        if let key = Bundle.main.infoDictionary?["OPENAI_API_KEY"] as? String, !key.isEmpty {
-            return key
+        guard let key = Bundle.main.infoDictionary?["OPENAI_API_KEY"] as? String, !key.isEmpty else {
+            fatalError("OPENAI_API_KEY not found in Info.plist")
         }
-        // TEMP: fallback (replace/remove for production)
-        return "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"
+        return key
     }
 
     private struct ChatRequest: Encodable {
