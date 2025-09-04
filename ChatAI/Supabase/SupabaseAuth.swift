@@ -29,6 +29,7 @@ final class SupabaseAuth: NSObject {
     @AppStorage("sb_access_token") private var storedAccessToken: String = ""
     @AppStorage("sb_refresh_token") private var storedRefreshToken: String = ""
     @AppStorage("sb_expires_at") private var storedExpiresAt: Double = 0 // epoch seconds
+    @AppStorage("sb_email") private var storedEmail: String = ""
 
     var accessToken: String? { storedAccessToken.isEmpty ? nil : storedAccessToken }
     var refreshToken: String? { storedRefreshToken.isEmpty ? nil : storedRefreshToken }
@@ -44,6 +45,7 @@ final class SupabaseAuth: NSObject {
         if let email = claims["email"] as? String, !email.isEmpty { return email }
         return "Guest"
     }
+    var lastEmail: String? { storedEmail.isEmpty ? nil : storedEmail }
 
     // MARK: - Public error type
     enum AuthError: LocalizedError {
@@ -73,13 +75,21 @@ final class SupabaseAuth: NSObject {
     }
 
     // MARK: - Start Google sign-in
-    func startGoogleSignIn() async throws {
+    func startGoogleSignIn(forceAccountChooser: Bool = false, preferEphemeral: Bool? = nil, loginHint: String? = nil) async throws {
         let redirect = "\(redirectScheme)://\(redirectHost)"
         var comps = URLComponents(url: baseURL.appendingPathComponent("auth/v1/authorize"), resolvingAgainstBaseURL: false)!
-        comps.queryItems = [
+        var items: [URLQueryItem] = [
             URLQueryItem(name: "provider", value: "google"),
             URLQueryItem(name: "redirect_to", value: redirect)
         ]
+        if forceAccountChooser {
+            // Ask Google to show the account chooser instead of auto-signing with last session
+            items.append(URLQueryItem(name: "prompt", value: "select_account"))
+        }
+        if let loginHint, !loginHint.isEmpty {
+            items.append(URLQueryItem(name: "login_hint", value: loginHint))
+        }
+        comps.queryItems = items
         guard let authURL = comps.url else { throw AuthError.configurationIssue("Could not build authorize URL") }
 
         // Debug: print the exact URL we open
@@ -111,7 +121,9 @@ final class SupabaseAuth: NSObject {
                     continuation.resume(throwing: error)
                 }
             }
-            self.authSession?.prefersEphemeralWebBrowserSession = false
+            // Default to non-ephemeral (reuse cookies). Caller can override.
+            if let preferEphemeral { self.authSession?.prefersEphemeralWebBrowserSession = preferEphemeral }
+            else { self.authSession?.prefersEphemeralWebBrowserSession = false }
             self.authSession?.presentationContextProvider = self
             _ = self.authSession?.start()
         }
@@ -146,6 +158,9 @@ final class SupabaseAuth: NSObject {
         storedAccessToken = accessToken
         storedRefreshToken = refreshToken
         storedExpiresAt = Date().timeIntervalSince1970 + expiresIn
+        if let claims = Self.decodeJWT(accessToken), let email = claims["email"] as? String, !email.isEmpty {
+            storedEmail = email
+        }
     }
 
     private static func parseQuery(_ query: String) -> [String: String] {

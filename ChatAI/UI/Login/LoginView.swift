@@ -12,6 +12,10 @@ struct LoginView: View {
     @State private var isSigningIn: Bool = false
     @State private var goHome: Bool = false
     @State private var signInError: String?
+    // Alert state
+    @State private var showAlert: Bool = false
+    @State private var alertTitle: String = ""
+    @State private var alertMessage: String = ""
 
     var body: some View {
         ZStack {
@@ -107,7 +111,8 @@ struct LoginView: View {
                             isSigningIn = true
                             Task {
                                 do {
-                                    try await SupabaseAuth.shared.startGoogleSignIn()
+                                    // Quick SSO (no prompt) on normal tap; pass lastEmail as login_hint if available
+                                    try await SupabaseAuth.shared.startGoogleSignIn(loginHint: SupabaseAuth.shared.lastEmail)
                                     // If we have a token after the flow, proceed to Home
                                     if SupabaseAuth.shared.isAuthenticated {
                                         await MainActor.run { goHome = true }
@@ -116,11 +121,36 @@ struct LoginView: View {
                                     // Show detailed error while preserving layout
                                     signInError = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
                                     print("[LoginView] Sign-in error: \(signInError ?? error.localizedDescription)")
+                                    alertTitle = "Sign-in failed"
+                                    alertMessage = signInError ?? "Unknown error"
+                                    showAlert = true
                                 }
                                 isSigningIn = false
                             }
                         }
                     }
+                    // Long-press to force Google account chooser (no auto-login)
+                    .simultaneousGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in
+                        if !isSigningIn {
+                            isSigningIn = true
+                            Task {
+                                do {
+                                    // Force chooser but keep non-ephemeral so existing cookies allow password-less selection
+                                    try await SupabaseAuth.shared.startGoogleSignIn(forceAccountChooser: true, preferEphemeral: false)
+                                    if SupabaseAuth.shared.isAuthenticated {
+                                        await MainActor.run { goHome = true }
+                                    }
+                                } catch {
+                                    signInError = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
+                                    print("[LoginView] Sign-in error (forced chooser): \(signInError ?? error.localizedDescription)")
+                                    alertTitle = "Sign-in failed"
+                                    alertMessage = signInError ?? "Unknown error"
+                                    showAlert = true
+                                }
+                                isSigningIn = false
+                            }
+                        }
+                    })
                     ProviderButton(title: "Continue with Microsoft Account", systemImage: "rectangle.grid.2x2") {}
                     ProviderButton(title: "Continue with Apple", systemImage: "applelogo") {}
                 }
@@ -144,15 +174,18 @@ struct LoginView: View {
             }
         }
         .preferredColorScheme(.dark)
-        // Hidden navigation trigger on successful Google sign-in
-        .background(
-            NavigationLink(isActive: $goHome) { HomeView() } label: { EmptyView() }
-        )
-        // Non-intrusive alert for diagnostics
-        .alert("Sign-in Error", isPresented: .constant(signInError != nil)) {
-            Button("OK") { signInError = nil }
-        } message: {
-            Text(signInError ?? "")
+        .background(Color.black.ignoresSafeArea())
+        .onAppear {
+            // If we already have a valid session, skip login UI
+            if SupabaseAuth.shared.isAuthenticated {
+                goHome = true
+            }
+        }
+        .navigationDestination(isPresented: $goHome) {
+            HomeView()
+        }
+        .alert(isPresented: $showAlert) {
+            Alert(title: Text(alertTitle), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }
     }
 
@@ -184,7 +217,7 @@ private struct ProviderButton: View {
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        ZStack(alignment: .topLeading) {
             HStack(spacing: 12) {
                 Image(systemName: systemImage)
                     .foregroundColor(.white)

@@ -8,9 +8,18 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var isAuthenticated: Bool = SupabaseAuth.shared.isAuthenticated
     var body: some View {
         NavigationStack {
-            LoginView()
+            if isAuthenticated {
+                HomeView()
+            } else {
+                LoginView()
+            }
+        }
+        .onAppear {
+            // Re-read tokens on app launch or when coming back from sign-out
+            isAuthenticated = SupabaseAuth.shared.isAuthenticated
         }
     }
 }
