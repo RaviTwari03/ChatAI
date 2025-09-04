@@ -10,9 +10,22 @@
 		F5CAB7C52E67EA650084DF1F /* ChatAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChatAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F5EEF4052E695AA70082AA45 /* Exceptions for "ChatAI" folder in "ChatAI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F5CAB7C42E67EA650084DF1F /* ChatAI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F5CAB7C72E67EA650084DF1F /* ChatAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F5EEF4052E695AA70082AA45 /* Exceptions for "ChatAI" folder in "ChatAI" target */,
+			);
 			path = ChatAI;
 			sourceTree = "<group>";
 		};
@@ -256,6 +269,8 @@
 				DEVELOPMENT_TEAM = YUHS7WP24P;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChatAI/Info.plist;
+				INFOPLIST_KEY_OPENAI_API_KEY = YOUR_API_KEY_HERE;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -284,6 +299,8 @@
 				DEVELOPMENT_TEAM = YUHS7WP24P;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChatAI/Info.plist;
+				INFOPLIST_KEY_OPENAI_API_KEY = YOUR_API_KEY_HERE;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
