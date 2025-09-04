@@ -152,7 +152,27 @@ struct LoginView: View {
                         }
                     })
                     ProviderButton(title: "Continue with Microsoft Account", systemImage: "rectangle.grid.2x2") {}
-                    ProviderButton(title: "Continue with Apple", systemImage: "applelogo") {}
+                    ProviderButton(title: "Continue with Apple", systemImage: "applelogo") {
+                        if !isSigningIn {
+                            isSigningIn = true
+                            Task {
+                                do {
+                                    // Native Apple sign-in using ASAuthorizationAppleIDProvider
+                                    try await SupabaseAuth.shared.startNativeAppleSignIn()
+                                    if SupabaseAuth.shared.isAuthenticated {
+                                        await MainActor.run { goHome = true }
+                                    }
+                                } catch {
+                                    signInError = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
+                                    print("[LoginView] Apple sign-in error: \(signInError ?? error.localizedDescription)")
+                                    alertTitle = "Sign-in failed"
+                                    alertMessage = signInError ?? "Unknown error"
+                                    showAlert = true
+                                }
+                                isSigningIn = false
+                            }
+                        }
+                    }
                 }
                 .padding(.horizontal, 24)
 
@@ -217,26 +237,28 @@ private struct ProviderButton: View {
     var action: () -> Void
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .foregroundColor(.white)
-                    .frame(width: 20)
-                Text(title)
-                    .foregroundColor(.white)
-                    .font(.subheadline)
-                Spacer(minLength: 0)
+        Button(action: action) {
+            ZStack(alignment: .topLeading) {
+                HStack(spacing: 12) {
+                    Image(systemName: systemImage)
+                        .foregroundColor(.white)
+                        .frame(width: 20)
+                    Text(title)
+                        .foregroundColor(.white)
+                        .font(.subheadline)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.02))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(0.02))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.35), lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
     }

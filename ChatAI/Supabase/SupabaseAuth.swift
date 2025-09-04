@@ -24,6 +24,7 @@ final class SupabaseAuth: NSObject {
     private let redirectHost = "auth-callback"
 
     private var authSession: ASWebAuthenticationSession?
+    private var appleContinuation: CheckedContinuation<Void, Error>?
 
     // MARK: - Public state
     @AppStorage("sb_access_token") private var storedAccessToken: String = ""
@@ -44,6 +45,52 @@ final class SupabaseAuth: NSObject {
         if let name = claims["name"] as? String, !name.isEmpty { return name }
         if let email = claims["email"] as? String, !email.isEmpty { return email }
         return "Guest"
+    }
+
+    // MARK: - Start Apple sign-in (Native) -> exchange id_token with Supabase
+    func startNativeAppleSignIn() async throws {
+        let provider = ASAuthorizationAppleIDProvider()
+        let request = provider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            self.appleContinuation = continuation
+            controller.performRequests()
+        }
+    }
+
+    private func exchangeAppleIDToken(_ idToken: String) async throws {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "grant_type", value: "id_token")]
+        guard let url = comps.url else { throw AuthError.configurationIssue("Could not build token URL for Apple exchange") }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("application/json", forHTTPHeaderField: "Accept")
+        req.addValue(anonKey, forHTTPHeaderField: "apikey")
+        req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = [
+            "provider": "apple",
+            "id_token": idToken
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else {
+            let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw AuthError.configurationIssue("Apple token exchange failed: \(http.statusCode) - \(msg)")
+        }
+        // Expect JSON with access_token, refresh_token, expires_in
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: data, options: []),
+            let dict = obj as? [String: Any]
+        else { throw URLError(.cannotParseResponse) }
+        try storeSession(from: dict)
     }
     /// Supabase user ID (UUID string), typically found in the `sub` claim of the JWT
     var userId: String? {
@@ -79,6 +126,50 @@ final class SupabaseAuth: NSObject {
             case .underlying(let err):
                 return err.localizedDescription
             }
+        }
+    }
+
+    // MARK: - Start Apple sign-in (Supabase OAuth)
+    func startAppleSignIn(preferEphemeral: Bool? = nil) async throws {
+        let redirect = "\(redirectScheme)://\(redirectHost)"
+        var comps = URLComponents(url: baseURL.appendingPathComponent("auth/v1/authorize"), resolvingAgainstBaseURL: false)!
+        let items: [URLQueryItem] = [
+            URLQueryItem(name: "provider", value: "apple"),
+            URLQueryItem(name: "redirect_to", value: redirect)
+        ]
+        comps.queryItems = items
+        guard let authURL = comps.url else { throw AuthError.configurationIssue("Could not build authorize URL for Apple") }
+
+        #if DEBUG
+        print("[SupabaseAuth] Opening Apple auth URL: \(authURL.absoluteString)")
+        #endif
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            self.authSession = ASWebAuthenticationSession(url: authURL, callbackURLScheme: self.redirectScheme) { callbackURL, error in
+                if let error = error as? ASWebAuthenticationSessionError {
+                    switch error.code {
+                    case .canceledLogin:
+                        return continuation.resume(throwing: AuthError.userCancelled)
+                    default:
+                        return continuation.resume(throwing: AuthError.underlying(error))
+                    }
+                } else if let error = error {
+                    return continuation.resume(throwing: AuthError.underlying(error))
+                }
+
+                guard let url = callbackURL else { return continuation.resume(throwing: AuthError.invalidCallbackURL) }
+                do {
+                    try self.storeSession(from: url)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+            // Apple sign-in typically prefers ephemeral session for privacy, but allow override
+            if let preferEphemeral { self.authSession?.prefersEphemeralWebBrowserSession = preferEphemeral }
+            else { self.authSession?.prefersEphemeralWebBrowserSession = false }
+            self.authSession?.presentationContextProvider = self
+            _ = self.authSession?.start()
         }
     }
 
@@ -171,6 +262,21 @@ final class SupabaseAuth: NSObject {
         }
     }
 
+    private func storeSession(from dict: [String: Any]) throws {
+        guard
+            let accessToken = dict["access_token"] as? String,
+            let refreshToken = dict["refresh_token"] as? String,
+            let expiresIn = dict["expires_in"] as? Double
+        else { throw URLError(.cannotParseResponse) }
+
+        storedAccessToken = accessToken
+        storedRefreshToken = refreshToken
+        storedExpiresAt = Date().timeIntervalSince1970 + expiresIn
+        if let claims = Self.decodeJWT(accessToken), let email = claims["email"] as? String, !email.isEmpty {
+            storedEmail = email
+        }
+    }
+
     private static func parseQuery(_ query: String) -> [String: String] {
         var result: [String: String] = [:]
         for pair in query.split(separator: "&") {
@@ -206,6 +312,43 @@ final class SupabaseAuth: NSObject {
 extension SupabaseAuth: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         // Try to return the key window
+        return UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    }
+}
+
+// MARK: - Native Apple Sign-in delegates
+extension SupabaseAuth: ASAuthorizationControllerDelegate {
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
+              let idToken = String(data: tokenData, encoding: .utf8) else {
+            appleContinuation?.resume(throwing: AuthError.configurationIssue("Missing Apple identity token"))
+            appleContinuation = nil
+            return
+        }
+
+        Task { [weak self] in
+            do {
+                try await self?.exchangeAppleIDToken(idToken)
+                self?.appleContinuation?.resume()
+            } catch {
+                self?.appleContinuation?.resume(throwing: error)
+            }
+            self?.appleContinuation = nil
+        }
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        appleContinuation?.resume(throwing: error)
+        appleContinuation = nil
+    }
+}
+
+extension SupabaseAuth: ASAuthorizationControllerPresentationContextProviding {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         return UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
