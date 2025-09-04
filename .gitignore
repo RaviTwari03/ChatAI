@@ -67,3 +67,7 @@ fastlane/test_output
 Config.plist
 Secrets.plist
 **/APIKeys.plist
+
+# Xcode project files with sensitive build settings
+ChatAI.xcodeproj/project.pbxproj.local
+*.xcconfig
