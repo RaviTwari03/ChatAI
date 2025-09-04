@@ -60,3 +60,10 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# API Keys and Secrets
+# Note: Info.plist is auto-generated and should be tracked
+# Only ignore files that might contain secrets
+Config.plist
+Secrets.plist
+**/APIKeys.plist

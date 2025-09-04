@@ -18,6 +18,9 @@ final class OpenAIService {
         guard let key = Bundle.main.infoDictionary?["OPENAI_API_KEY"] as? String, !key.isEmpty else {
             fatalError("OPENAI_API_KEY not found in Info.plist. Please add your OpenAI API key to the Info.plist file.")
         }
+        guard let key = Bundle.main.infoDictionary?["GROK_API_KEY"] as? String, !key.isEmpty else {
+            fatalError("OPENAI_API_KEY not found in Info.plist. Please add your OpenAI API key to the Info.plist file.")
+        }
         return key
     }
 

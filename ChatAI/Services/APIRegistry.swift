@@ -19,6 +19,7 @@ struct APIRegistry {
 
     // Currently only OpenAI is implemented by `OpenAIService`
     let providers: [APIProvider] = [
-        APIProvider(id: "openai", displayName: "ChatGPT mini")
+        APIProvider(id: "openai", displayName: "ChatGPT mini"),
+        APIProvider(id: "grokai", displayName: "GROK AI")
     ]
 }

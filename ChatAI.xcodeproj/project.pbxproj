@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F5C8A0782E69ACFB00E4B640 /* SwiftSMTP in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A0772E69ACFB00E4B640 /* SwiftSMTP */; };
+		F5C8A07B2E69AD2200E4B640 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A07A2E69AD2200E4B640 /* Auth */; };
+		F5C8A07D2E69AD2200E4B640 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A07C2E69AD2200E4B640 /* Functions */; };
+		F5C8A07F2E69AD2200E4B640 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A07E2E69AD2200E4B640 /* PostgREST */; };
+		F5C8A0812E69AD2200E4B640 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A0802E69AD2200E4B640 /* Realtime */; };
+		F5C8A0832E69AD2200E4B640 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A0822E69AD2200E4B640 /* Storage */; };
+		F5C8A0862E69AD3200E4B640 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A0852E69AD3200E4B640 /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F5CAB7C52E67EA650084DF1F /* ChatAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChatAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,16 +46,31 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F5C8A0862E69AD3200E4B640 /* Supabase in Frameworks */,
+				F5C8A0832E69AD2200E4B640 /* Storage in Frameworks */,
+				F5C8A07F2E69AD2200E4B640 /* PostgREST in Frameworks */,
+				F5C8A07D2E69AD2200E4B640 /* Functions in Frameworks */,
+				F5C8A07B2E69AD2200E4B640 /* Auth in Frameworks */,
+				F5C8A0812E69AD2200E4B640 /* Realtime in Frameworks */,
+				F5C8A0782E69ACFB00E4B640 /* SwiftSMTP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		F5C8A0842E69AD3200E4B640 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		F5CAB7BC2E67EA650084DF1F = {
 			isa = PBXGroup;
 			children = (
 				F5CAB7C72E67EA650084DF1F /* ChatAI */,
+				F5C8A0842E69AD3200E4B640 /* Frameworks */,
 				F5CAB7C62E67EA650084DF1F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -78,6 +103,13 @@
 			);
 			name = ChatAI;
 			packageProductDependencies = (
+				F5C8A0772E69ACFB00E4B640 /* SwiftSMTP */,
+				F5C8A07A2E69AD2200E4B640 /* Auth */,
+				F5C8A07C2E69AD2200E4B640 /* Functions */,
+				F5C8A07E2E69AD2200E4B640 /* PostgREST */,
+				F5C8A0802E69AD2200E4B640 /* Realtime */,
+				F5C8A0822E69AD2200E4B640 /* Storage */,
+				F5C8A0852E69AD3200E4B640 /* Supabase */,
 			);
 			productName = ChatAI;
 			productReference = F5CAB7C52E67EA650084DF1F /* ChatAI.app */;
@@ -107,6 +139,10 @@
 			);
 			mainGroup = F5CAB7BC2E67EA650084DF1F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F5C8A0762E69ACFB00E4B640 /* XCRemoteSwiftPackageReference "Swift-SMTP" */,
+				F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F5CAB7C62E67EA650084DF1F /* Products */;
 			projectDirPath = "";
@@ -341,6 +377,63 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F5C8A0762E69ACFB00E4B640 /* XCRemoteSwiftPackageReference "Swift-SMTP" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Kitura/Swift-SMTP";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
+			};
+		};
+		F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase-community/supabase-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F5C8A0772E69ACFB00E4B640 /* SwiftSMTP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0762E69ACFB00E4B640 /* XCRemoteSwiftPackageReference "Swift-SMTP" */;
+			productName = SwiftSMTP;
+		};
+		F5C8A07A2E69AD2200E4B640 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		F5C8A07C2E69AD2200E4B640 /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		F5C8A07E2E69AD2200E4B640 /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		F5C8A0802E69AD2200E4B640 /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		F5C8A0822E69AD2200E4B640 /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		F5C8A0852E69AD3200E4B640 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F5C8A0792E69AD2200E4B640 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F5CAB7BD2E67EA650084DF1F /* Project object */;
 }
