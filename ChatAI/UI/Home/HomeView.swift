@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    @Environment(\.dismiss) private var dismiss
     // API selector for the center chip (driven by app registry)
     private let providers: [APIProvider] = APIRegistry.shared.providers
     @State private var selectedProviderId: String = APIRegistry.shared.activeProvider().id
@@ -230,6 +231,29 @@ struct HomeView: View {
 
                 // Panel
                 VStack(alignment: .leading, spacing: 16) {
+                    // User header
+                    HStack(spacing: 10) {
+                        let name = SupabaseAuth.shared.displayName
+                        ZStack {
+                            Circle().fill(Color.purple.opacity(0.6))
+                            Text(String(name.prefix(1)).uppercased())
+                                .font(.subheadline).bold()
+                                .foregroundColor(.white)
+                        }
+                        .frame(width: 28, height: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name)
+                                .foregroundColor(.white)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Text("Signed in")
+                                .foregroundColor(.white.opacity(0.6))
+                                .font(.caption2)
+                        }
+                        Spacer()
+                    }
+                    .padding(.bottom, 4)
+
                     // Search
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
@@ -294,6 +318,44 @@ struct HomeView: View {
                         }
                     }
                     .font(.subheadline)
+
+                    Divider().background(Color.white.opacity(0.15))
+
+                    // Account actions
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            // Upgrade action (placeholder)
+                            alertTitle = "Upgrade to Pro"
+                            alertMessage = "Premium features are coming soon."
+                            showAlert = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "star.circle.fill").foregroundColor(.yellow)
+                                Text("Upgrade to Pro")
+                                Spacer()
+                            }
+                            .foregroundColor(.white)
+                            .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            SupabaseAuth.shared.signOut()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                showSidePanel = false
+                            }
+                            // Pop back to LoginView
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("Sign out")
+                                Spacer()
+                            }
+                        }
+                        .tint(.red)
+                        .buttonStyle(.plain)
+                    }
 
                     Spacer()
                 }

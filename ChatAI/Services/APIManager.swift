@@ -1,3 +1,10 @@
+//
+//  APIManager.swift
+//  ChatAI
+//
+//  Created by Ravi Tiwari on 04/09/25.
+//
+
 import Foundation
 
 /// Secure API Manager for handling API keys and configuration

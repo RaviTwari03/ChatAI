@@ -1,3 +1,10 @@
+//
+//  Supabase Controller.swift
+//  ChatAI
+//
+//  Created by Ravi Tiwari on 04/09/25.
+//
+
 import Foundation
 
 // NOTE: These keys are sensitive. Consider moving them into a secure store or .xcconfig for production.

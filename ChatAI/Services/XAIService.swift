@@ -1,3 +1,10 @@
+//
+//  XAIService.swift
+//  ChatAI
+//
+//  Created by Ravi Tiwari on 04/09/25.
+//
+
 import Foundation
 
 struct XAIError: Error, Decodable { let message: String }

@@ -1,3 +1,10 @@
+//
+//  SupabaseService.swift
+//  ChatAI
+//
+//  Created by Ravi Tiwari on 04/09/25.
+//
+
 import Foundation
 
 enum SupabaseError: LocalizedError {

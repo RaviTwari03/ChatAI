@@ -9,6 +9,9 @@ import SwiftUI
 
 struct LoginView: View {
     @State private var email: String = ""
+    @State private var isSigningIn: Bool = false
+    @State private var goHome: Bool = false
+    @State private var signInError: String?
 
     var body: some View {
         ZStack {
@@ -99,7 +102,25 @@ struct LoginView: View {
                 // Provider buttons stack
                 VStack(spacing: 12) {
                     ProviderButton(title: "Continue with Phone", systemImage: "phone") {}
-                    ProviderButton(title: "Continue with Google", systemImage: "g.circle") {}
+                    ProviderButton(title: "Continue with Google", systemImage: "g.circle") {
+                        if !isSigningIn {
+                            isSigningIn = true
+                            Task {
+                                do {
+                                    try await SupabaseAuth.shared.startGoogleSignIn()
+                                    // If we have a token after the flow, proceed to Home
+                                    if SupabaseAuth.shared.isAuthenticated {
+                                        await MainActor.run { goHome = true }
+                                    }
+                                } catch {
+                                    // Show detailed error while preserving layout
+                                    signInError = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
+                                    print("[LoginView] Sign-in error: \(signInError ?? error.localizedDescription)")
+                                }
+                                isSigningIn = false
+                            }
+                        }
+                    }
                     ProviderButton(title: "Continue with Microsoft Account", systemImage: "rectangle.grid.2x2") {}
                     ProviderButton(title: "Continue with Apple", systemImage: "applelogo") {}
                 }
@@ -123,6 +144,16 @@ struct LoginView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Hidden navigation trigger on successful Google sign-in
+        .background(
+            NavigationLink(isActive: $goHome) { HomeView() } label: { EmptyView() }
+        )
+        // Non-intrusive alert for diagnostics
+        .alert("Sign-in Error", isPresented: .constant(signInError != nil)) {
+            Button("OK") { signInError = nil }
+        } message: {
+            Text(signInError ?? "")
+        }
     }
 
     // MARK: Background
