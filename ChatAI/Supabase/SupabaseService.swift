@@ -22,6 +22,7 @@ enum SupabaseError: LocalizedError {
         case .noData: return "No data received"
         case .decoding(let err): return "Decoding error: \(err.localizedDescription)"
         }
+
     }
 }
 
@@ -62,7 +63,12 @@ struct SupabaseService {
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("application/json", forHTTPHeaderField: "Accept")
         req.addValue(anonKey, forHTTPHeaderField: "apikey")
-        req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        // Use user access token if signed in, otherwise fallback to anon key
+        if let token = SupabaseAuth.shared.accessToken, !token.isEmpty {
+            req.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else {
+            req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        }
         if let prefer { req.addValue(prefer, forHTTPHeaderField: "Prefer") }
         req.httpBody = jsonBody
         return req
@@ -103,15 +109,19 @@ struct SupabaseService {
         }
     }
 
-    // Fetch recent chats
-    func fetchRecentChats(limit: Int = 20) async -> Result<[RecentChat], SupabaseError> {
+    // Fetch recent chats (optionally scoped to a specific user)
+    func fetchRecentChats(limit: Int = 20, userId: String? = nil) async -> Result<[RecentChat], SupabaseError> {
         do {
             var comps = URLComponents(url: restBase.appendingPathComponent("recent_chats"), resolvingAgainstBaseURL: false)!
-            comps.queryItems = [
+            var items: [URLQueryItem] = [
                 URLQueryItem(name: "select", value: "*"),
                 URLQueryItem(name: "order", value: "created_at.desc"),
                 URLQueryItem(name: "limit", value: String(limit))
             ]
+            if let userId, !userId.isEmpty {
+                items.append(URLQueryItem(name: "user_id", value: "eq.\(userId)"))
+            }
+            comps.queryItems = items
             guard let url = comps.url else { return .failure(.invalidURL) }
             let req = authedRequest(url: url, method: "GET")
             let (data, resp) = try await URLSession.shared.data(for: req)
@@ -124,6 +134,28 @@ struct SupabaseService {
             return .success(mapped)
         } catch let e as DecodingError {
             return .failure(.decoding(e))
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    // Delete a recent chat by id (optionally assert user)
+    func deleteRecentChat(id: UUID, userId: String? = nil) async -> Result<Void, SupabaseError> {
+        do {
+            var comps = URLComponents(url: restBase.appendingPathComponent("recent_chats"), resolvingAgainstBaseURL: false)!
+            var items: [URLQueryItem] = [
+                URLQueryItem(name: "id", value: "eq.\(id.uuidString)")
+            ]
+            if let userId, !userId.isEmpty {
+                items.append(URLQueryItem(name: "user_id", value: "eq.\(userId)"))
+            }
+            comps.queryItems = items
+            guard let url = comps.url else { return .failure(.invalidURL) }
+            let req = authedRequest(url: url, method: "DELETE", prefer: "return=minimal")
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else { return .failure(.badStatus(http.statusCode)) }
+            return .success(())
         } catch {
             return .failure(.network(error))
         }

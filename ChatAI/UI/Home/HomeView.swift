@@ -26,6 +26,9 @@ struct HomeView: View {
     @State private var alertMessage: String = ""
     // Recents
     @State private var recentChats: [RecentChat] = []
+    // Delete confirmation state
+    @State private var showDeleteConfirm: Bool = false
+    @State private var chatToDelete: RecentChat? = nil
     var body: some View {
         ZStack {
             // Background
@@ -36,7 +39,7 @@ struct HomeView: View {
                 // Top chips row
                 HStack(spacing: 12) {
                     // Left chip
-                    Button(action: { withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { showSidePanel = true } }) {
+                    Button(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) { showSidePanel = true } }) {
                         CapsuleChip { Image(systemName: "ellipsis.circle") }
                     }
                     .buttonStyle(.plain)
@@ -198,10 +201,17 @@ struct HomeView: View {
         }
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
+        .animation(.spring(response: 0.30, dampingFraction: 0.86, blendDuration: 0.2), value: showSidePanel)
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(alertMessage)
+        }
+        .confirmationDialog("Delete chat?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await confirmDelete() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove the chat from your recents.")
         }
         .onChange(of: showSidePanel) { open in
             if open { Task { await loadRecents() } }
@@ -227,7 +237,7 @@ struct HomeView: View {
                 // Dimmed tappable area to close
                 Color.black.opacity(0.45)
                     .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { showSidePanel = false } }
+                    .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) { showSidePanel = false } }
 
                 // Panel
                 VStack(alignment: .leading, spacing: 16) {
@@ -297,29 +307,38 @@ struct HomeView: View {
 
                     // Recents from Supabase
                     VStack(alignment: .leading, spacing: 12) {
+                        Text("Recent Chats")
+                            .foregroundColor(.white.opacity(0.6))
+                            .font(.caption)
+                            .padding(.bottom, 2)
                         if recentChats.isEmpty {
                             Text("No recent chats")
                                 .foregroundColor(.white.opacity(0.6))
                         } else {
                             ForEach(recentChats) { rc in
-                                NavigationLink(destination: ChatView(initialText: rc.title)) {
-                                    HStack {
+                                HStack(alignment: .center, spacing: 8) {
+                                    NavigationLink(destination: ChatView(initialText: rc.title)) {
                                         Text(rc.title)
                                             .foregroundColor(.white)
                                             .multilineTextAlignment(.leading)
-                                        Spacer()
+                                            .lineLimit(2)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
+                                    .buttonStyle(.plain)
+                                    Button {
+                                        chatToDelete = rc
+                                        showDeleteConfirm = true
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(.red.opacity(0.9))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
-                                .simultaneousGesture(TapGesture().onEnded {
-                                    showSidePanel = false
-                                })
+                                .padding(.vertical, 6)
                             }
                         }
-                    }
-                    .font(.subheadline)
 
-                    Divider().background(Color.white.opacity(0.15))
+                    }
 
                     // Account actions
                     VStack(alignment: .leading, spacing: 12) {
@@ -362,7 +381,8 @@ struct HomeView: View {
                 .padding(16)
                 .frame(width: panelWidth, height: proxy.size.height)
                 .background(Color.black)
-                .transition(.move(edge: .leading))
+                .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),
+                                        removal: .move(edge: .leading).combined(with: .opacity)))
             }
         }
     }
@@ -380,7 +400,8 @@ struct HomeView: View {
 
     // MARK: - Supabase helpers
     private func loadRecents() async {
-        let res = await SupabaseService().fetchRecentChats(limit: 20)
+        let uid = SupabaseAuth.shared.userId
+        let res = await SupabaseService().fetchRecentChats(limit: 20, userId: uid)
         switch res {
         case .success(let items):
             recentChats = items
@@ -395,10 +416,35 @@ struct HomeView: View {
         // Save recent, then navigate
         let title = String(homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
         let fallback = title.isEmpty ? "New chat" : title
-        let chat = RecentChat(title: fallback)
+        let chat = RecentChat(title: fallback, userId: SupabaseAuth.shared.userId)
         _ = await SupabaseService().saveRecentChat(chat)
         await MainActor.run {
             goToChat = true
+        }
+    }
+
+    private func deleteRecent(_ rc: RecentChat) async {
+        let res = await SupabaseService().deleteRecentChat(id: rc.id, userId: SupabaseAuth.shared.userId)
+        switch res {
+        case .success:
+            await MainActor.run {
+                recentChats.removeAll { $0.id == rc.id }
+            }
+        case .failure(let err):
+            await MainActor.run {
+                alertTitle = "Delete Failed"
+                alertMessage = err.localizedDescription
+                showAlert = true
+            }
+        }
+    }
+
+    private func confirmDelete() async {
+        guard let rc = chatToDelete else { return }
+        await deleteRecent(rc)
+        await MainActor.run {
+            chatToDelete = nil
+            showDeleteConfirm = false
         }
     }
 

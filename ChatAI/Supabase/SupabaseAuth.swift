@@ -45,6 +45,14 @@ final class SupabaseAuth: NSObject {
         if let email = claims["email"] as? String, !email.isEmpty { return email }
         return "Guest"
     }
+    /// Supabase user ID (UUID string), typically found in the `sub` claim of the JWT
+    var userId: String? {
+        guard let token = accessToken, let claims = Self.decodeJWT(token) else { return nil }
+        if let sub = claims["sub"] as? String, !sub.isEmpty { return sub }
+        if let uid = claims["user_id"] as? String, !uid.isEmpty { return uid }
+        if let userMeta = claims["user_metadata"] as? [String: Any], let uid = userMeta["user_id"] as? String, !uid.isEmpty { return uid }
+        return nil
+    }
     var lastEmail: String? { storedEmail.isEmpty ? nil : storedEmail }
 
     // MARK: - Public error type
