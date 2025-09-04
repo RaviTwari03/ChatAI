@@ -32,6 +32,7 @@ final class OpenAIService {
     private struct ChatResponse: Decodable { let choices: [Choice] }
 
     func complete(prompt: String) async throws -> String {
+        print("🚀 Using OpenAI provider: ChatGPT mini [openai]")
         guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"

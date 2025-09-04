@@ -26,6 +26,7 @@ final class XAIService {
     private struct ChatResponse: Decodable { let choices: [Choice] }
 
     func complete(prompt: String) async throws -> String {
+        print("🚀 Using xAI provider: GROK AI [grokai]")
         guard let url = URL(string: "https://api.x.ai/v1/chat/completions") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
