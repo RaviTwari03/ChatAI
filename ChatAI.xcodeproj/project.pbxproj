@@ -18,6 +18,7 @@
 
 /* Begin PBXFileReference section */
 		F5CAB7C52E67EA650084DF1F /* ChatAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChatAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F5CAB7D32E67EA660084DF1F /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -66,12 +67,21 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		F5C8A1D62E69B50400E4B640 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				F5CAB7D32E67EA660084DF1F /* Secrets.xcconfig */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		F5CAB7BC2E67EA650084DF1F = {
 			isa = PBXGroup;
 			children = (
 				F5CAB7C72E67EA650084DF1F /* ChatAI */,
 				F5C8A0842E69AD3200E4B640 /* Frameworks */,
 				F5CAB7C62E67EA650084DF1F /* Products */,
+				F5C8A1D62E69B50400E4B640 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -297,6 +307,7 @@
 		};
 		F5CAB7D12E67EA660084DF1F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F5CAB7D32E67EA660084DF1F /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -306,8 +317,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ChatAI/Info.plist;
-				GROK_API_KEY = "$(GROK_API_KEY)";
-				OPENAI_API_KEY = "$(OPENAI_API_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -328,6 +337,7 @@
 		};
 		F5CAB7D22E67EA660084DF1F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F5CAB7D32E67EA660084DF1F /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -337,8 +347,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ChatAI/Info.plist;
-				GROK_API_KEY = "$(GROK_API_KEY)";
-				OPENAI_API_KEY = "$(OPENAI_API_KEY)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
