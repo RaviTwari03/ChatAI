@@ -10,7 +10,7 @@ import SwiftUI
 struct HomeView: View {
     // API selector for the center chip (driven by app registry)
     private let providers: [APIProvider] = APIRegistry.shared.providers
-    @State private var selectedProviderId: String = APIRegistry.shared.providers.first?.id ?? ""
+    @State private var selectedProviderId: String = APIRegistry.shared.activeProvider().id
     private var selectedDisplayName: String {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
     }
@@ -204,6 +204,17 @@ struct HomeView: View {
         }
         .onChange(of: showSidePanel) { open in
             if open { Task { await loadRecents() } }
+        }
+        // Keep UI state in sync with persisted selection
+        .onAppear {
+            let current = APIRegistry.shared.activeProvider().id
+            if selectedProviderId != current {
+                selectedProviderId = current
+            }
+        }
+        // When user picks a provider from the menu, switch it in the registry (persist + log)
+        .onChange(of: selectedProviderId) { newId in
+            APIRegistry.shared.setCurrentProvider(id: newId)
         }
     }
 

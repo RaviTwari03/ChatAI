@@ -29,7 +29,8 @@ final class ChatViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
-                let reply = try await OpenAIService.shared.complete(prompt: trimmed)
+                // Route through registry so the active provider (OpenAI or GROK) is used
+                let reply = try await APIRegistry.shared.complete(prompt: trimmed)
                 messages.append(ChatMessage(text: reply, isUser: false))
             } catch {
                 messages.append(ChatMessage(text: "Sorry, I couldn't process that. \n\nError: \(error.localizedDescription)", isUser: false))
