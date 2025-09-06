@@ -4,6 +4,10 @@
 # working directory name when running `supabase init`.
 project_id = "ChatAI"
 
+# Secrets are NOT stored in this repository. To use Supabase Studio AI locally,
+# create a local .env file and export OPENAI_API_KEY and XAI_API_KEY before running `supabase start`.
+# The Studio setting below already references env(OPENAI_API_KEY).
+
 [api]
 enabled = true
 # Port to use for the API URL.

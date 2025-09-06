@@ -553,6 +553,6 @@ private struct CapsuleSmall<Label: View>: View {
     }
 }
 
-#Preview {
-    NavigationStack { HomeView() }
-}
+//#Preview {
+//    NavigationStack { HomeView() }
+//}
