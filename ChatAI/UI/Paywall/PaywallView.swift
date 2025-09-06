@@ -71,16 +71,16 @@ struct PaywallView: View {
                 VStack(spacing: 12) {
                     planCard(
                         title: "YEARLY ACCESS",
-                        subtitle: "Just ₹ 3,450.00 per year",
-                        priceNote: "79.15/Week",
+                        subtitle: "Just ₹ 5,900.00 per year",
+                        priceNote: "₹ 113.45/Week",
                         badge: "Best Offer",
                         isSelected: selectedPlan == .yearly
                     ) { selectedPlan = .yearly }
 
                     planCard(
                         title: "3-DAY FREE TRIAL",
-                        subtitle: "Then ₹ 599.00",
-                        priceNote: "Per week",
+                        subtitle: "Then ₹ 699.00",
+                        priceNote: "₹ 174/Week",
                         badge: nil,
                         isSelected: selectedPlan == .weekly
                     ) { selectedPlan = .weekly }
@@ -179,6 +179,6 @@ struct PaywallView: View {
     enum Plan { case yearly, weekly }
 }
 
-#Preview {
-    NavigationStack { PaywallView() }
-}
+//#Preview {
+//    NavigationStack { PaywallView() }
+//}

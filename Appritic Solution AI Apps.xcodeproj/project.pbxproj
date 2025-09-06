@@ -17,17 +17,17 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		F5CAB7C52E67EA650084DF1F /* ChatAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChatAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F5CAB7C52E67EA650084DF1F /* Conversation AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Conversation AI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F5CAB7D32E67EA660084DF1F /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F5EEF4052E695AA70082AA45 /* Exceptions for "ChatAI" folder in "ChatAI" target */ = {
+		F5EEF4052E695AA70082AA45 /* Exceptions for "ChatAI" folder in "Conversation AI" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = F5CAB7C42E67EA650084DF1F /* ChatAI */;
+			target = F5CAB7C42E67EA650084DF1F /* Conversation AI */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -35,7 +35,7 @@
 		F5CAB7C72E67EA650084DF1F /* ChatAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				F5EEF4052E695AA70082AA45 /* Exceptions for "ChatAI" folder in "ChatAI" target */,
+				F5EEF4052E695AA70082AA45 /* Exceptions for "ChatAI" folder in "Conversation AI" target */,
 			);
 			path = ChatAI;
 			sourceTree = "<group>";
@@ -88,7 +88,7 @@
 		F5CAB7C62E67EA650084DF1F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F5CAB7C52E67EA650084DF1F /* ChatAI.app */,
+				F5CAB7C52E67EA650084DF1F /* Conversation AI.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -96,9 +96,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		F5CAB7C42E67EA650084DF1F /* ChatAI */ = {
+		F5CAB7C42E67EA650084DF1F /* Conversation AI */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F5CAB7D02E67EA660084DF1F /* Build configuration list for PBXNativeTarget "ChatAI" */;
+			buildConfigurationList = F5CAB7D02E67EA660084DF1F /* Build configuration list for PBXNativeTarget "Conversation AI" */;
 			buildPhases = (
 				F5CAB7C12E67EA650084DF1F /* Sources */,
 				F5CAB7C22E67EA650084DF1F /* Frameworks */,
@@ -111,7 +111,7 @@
 			fileSystemSynchronizedGroups = (
 				F5CAB7C72E67EA650084DF1F /* ChatAI */,
 			);
-			name = ChatAI;
+			name = "Conversation AI";
 			packageProductDependencies = (
 				F5C8A0772E69ACFB00E4B640 /* SwiftSMTP */,
 				F5C8A07A2E69AD2200E4B640 /* Auth */,
@@ -122,7 +122,7 @@
 				F5C8A0852E69AD3200E4B640 /* Supabase */,
 			);
 			productName = ChatAI;
-			productReference = F5CAB7C52E67EA650084DF1F /* ChatAI.app */;
+			productReference = F5CAB7C52E67EA650084DF1F /* Conversation AI.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -140,7 +140,7 @@
 					};
 				};
 			};
-			buildConfigurationList = F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "ChatAI" */;
+			buildConfigurationList = F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "Appritic Solution AI Apps" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -158,7 +158,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				F5CAB7C42E67EA650084DF1F /* ChatAI */,
+				F5CAB7C42E67EA650084DF1F /* Conversation AI */,
 			);
 		};
 /* End PBXProject section */
@@ -313,10 +313,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YUHS7WP24P;
+				DEVELOPMENT_TEAM = RU33439F6Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ChatAI/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Appritic Solution AI Apps";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -327,7 +328,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ravitiwari.ChatAI.ios.apple.ai;
+				PRODUCT_BUNDLE_IDENTIFIER = com.viionrinfotech.chatai;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -343,10 +344,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YUHS7WP24P;
+				DEVELOPMENT_TEAM = RU33439F6Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ChatAI/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Appritic Solution AI Apps";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -357,7 +359,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ravitiwari.ChatAI.ios.apple.ai;
+				PRODUCT_BUNDLE_IDENTIFIER = com.viionrinfotech.chatai;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -368,7 +370,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "ChatAI" */ = {
+		F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "Appritic Solution AI Apps" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F5CAB7CE2E67EA660084DF1F /* Debug */,
@@ -377,7 +379,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F5CAB7D02E67EA660084DF1F /* Build configuration list for PBXNativeTarget "ChatAI" */ = {
+		F5CAB7D02E67EA660084DF1F /* Build configuration list for PBXNativeTarget "Conversation AI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F5CAB7D12E67EA660084DF1F /* Debug */,
