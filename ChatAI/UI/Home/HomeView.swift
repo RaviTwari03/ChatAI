@@ -18,6 +18,8 @@ struct HomeView: View {
     // Draft for bottom composer and navigation trigger
     @State private var homeDraft: String = ""
     @State private var goToChat: Bool = false
+    // Paywall navigation
+    @State private var showPaywall: Bool = false
     // Left 2/3 slide-over
     @State private var showSidePanel: Bool = false
     // Alerts
@@ -66,11 +68,14 @@ struct HomeView: View {
 
                     Spacer(minLength: 0)
 
-                    // Right chip
-                    CapsuleChip {
-                        Text("Try Premium")
-                            .font(.subheadline)
+                    // Right chip -> opens Paywall
+                    Button(action: { showPaywall = true }) {
+                        CapsuleChip {
+                            Text("Try Premium")
+                                .font(.subheadline)
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 6)
@@ -191,6 +196,11 @@ struct HomeView: View {
                     .onChange(of: goToChat) { active in
                         if !active { homeDraft = "" }
                     }
+
+                    // Hidden navigation to Paywall
+                    NavigationLink(isActive: $showPaywall) {
+                        PaywallView()
+                    } label: { EmptyView() }
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
@@ -343,10 +353,12 @@ struct HomeView: View {
                     // Account actions
                     VStack(alignment: .leading, spacing: 12) {
                         Button {
-                            // Upgrade action (placeholder)
-                            alertTitle = "Upgrade to Pro"
-                            alertMessage = "Premium features are coming soon."
-                            showAlert = true
+                            // Navigate to Paywall
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) {
+                                showSidePanel = false
+                            }
+                            // Trigger navigation to paywall
+                            showPaywall = true
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "star.circle.fill").foregroundColor(.yellow)
