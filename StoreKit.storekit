@@ -1,0 +1,173 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "DB69D6E3",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6752124007",
+    "_developerTeamID" : "RU33439F6Q",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 778878648.22722197,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21774584",
+      "localizations" : [
+
+      ],
+      "name" : "Chatly-Chatbox Ai",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "12.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "6752128497",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock unlimited AI conversations for 1 month",
+              "displayName" : "ChatAI Pro - Monthly Plan",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "c_ca_1299",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Chatly-Chatbox Ai Monthly ₹ 1299",
+          "subscriptionGroupID" : "21774584",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6752131136",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Weekly subscription with unlimited AI chats.",
+              "displayName" : "ChatAI Pro - Weekly Plan",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "c_ca_699",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "Chatly-Chatbox Ai Weekly ₹ 699",
+          "subscriptionGroupID" : "21774584",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "59.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6752125603",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock unlimited AI conversations",
+              "displayName" : "ChatAI Pro - Annual Plan",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "c_ca_5900",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Chatly-Chatbox Ai ₹ 5900",
+          "subscriptionGroupID" : "21774584",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

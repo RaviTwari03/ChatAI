@@ -26,6 +26,7 @@
 //    @Published var isSubscribed: Bool = false
 //    @Published var currentEntitlement: Product? = nil
 //    @Published var statusMessage: String = ""
+//    @Published var lastStoreKitError: String? = nil
 //
 //    private var updatesTask: Task<Void, Never>? = nil
 //
@@ -181,8 +182,9 @@ final class PurchaseManager: ObservableObject {
     // MARK: - Configure with your App Store Connect product identifiers
     // Replace these with your exact product IDs from App Store Connect
     private let productIDs: [String] = [
-        "c_ca_5900", // higher tier (e.g. yearly/monthly) — must match ASC exactly
-        "c_ca_699"   // lower tier (e.g. weekly)
+        "c_ca_5900", // Yearly
+        "c_ca_1299", // Monthly
+        "c_ca_699"   // Weekly
     ]
 
     // MARK: - Published state for UI
@@ -191,6 +193,7 @@ final class PurchaseManager: ObservableObject {
     @Published var isSubscribed: Bool = false
     @Published var currentEntitlement: Product? = nil
     @Published var statusMessage: String = ""
+    @Published var lastStoreKitError: String? = nil
 
     private var updatesTask: Task<Void, Never>? = nil
 
@@ -214,6 +217,10 @@ final class PurchaseManager: ObservableObject {
             try await updateCurrentEntitlements()
         } catch {
             statusMessage = "Store error: \(error.localizedDescription)"
+            lastStoreKitError = error.localizedDescription
+            #if DEBUG
+            print("[IAP] refreshProductsAndEntitlements error: \(error)")
+            #endif
         }
     }
 
@@ -267,9 +274,16 @@ final class PurchaseManager: ObservableObject {
 
     private func fetchProducts() async throws {
         // Load all products defined in App Store Connect
+        #if DEBUG
+        print("[IAP] Fetching products for IDs: \(productIDs)")
+        #endif
         let storeProducts = try await Product.products(for: productIDs)
         // Preserve your configured order
         self.products = productIDs.compactMap { id in storeProducts.first(where: { $0.id == id }) }
+        #if DEBUG
+        let loadedIDs = self.products.map { $0.id }
+        print("[IAP] Loaded products: \(loadedIDs)")
+        #endif
     }
 
     // MARK: - Entitlements
@@ -289,6 +303,9 @@ final class PurchaseManager: ObservableObject {
                 }
             } catch {
                 // Ignore unverified transactions
+                #if DEBUG
+                print("[IAP] Unverified transaction encountered: \(error)")
+                #endif
             }
         }
 
@@ -304,12 +321,16 @@ final class PurchaseManager: ObservableObject {
             guard let self else { return }
             for await update in StoreKit.Transaction.updates {
                 do {
-                    let transaction: StoreKit.Transaction = try self.checkVerified(update)
+                    let transaction: StoreKit.Transaction = try await self.checkVerified(update)
                     await transaction.finish()
                     await self.refreshProductsAndEntitlements()
                 } catch {
                     await MainActor.run {
-                        self.statusMessage = "Transaction update failed"
+                        self.statusMessage = "Transaction update failed: \(error.localizedDescription)"
+                        self.lastStoreKitError = error.localizedDescription
+                        #if DEBUG
+                        print("[IAP] Transaction update failed: \(error)")
+                        #endif
                     }
                 }
             }
@@ -329,5 +350,11 @@ final class PurchaseManager: ObservableObject {
         case .verified(let safe):
             return safe
         }
+    }
+
+    // MARK: - Debug helpers
+    var debugSummary: String {
+        let loadedIDs = products.map { $0.id }
+        return "ProductsLoaded=\(products.count) LoadedIDs=\(loadedIDs) LastError=\(lastStoreKitError ?? "none")"
     }
 }

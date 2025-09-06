@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F588F3D72E6CBACC00A81FBF /* StoreKit.storekit in Resources */ = {isa = PBXBuildFile; fileRef = F588F3D62E6CBACC00A81FBF /* StoreKit.storekit */; };
 		F5C8A0782E69ACFB00E4B640 /* SwiftSMTP in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A0772E69ACFB00E4B640 /* SwiftSMTP */; };
 		F5C8A07B2E69AD2200E4B640 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A07A2E69AD2200E4B640 /* Auth */; };
 		F5C8A07D2E69AD2200E4B640 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = F5C8A07C2E69AD2200E4B640 /* Functions */; };
@@ -17,6 +18,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F588F3D62E6CBACC00A81FBF /* StoreKit.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = StoreKit.storekit; sourceTree = "<group>"; };
 		F5CAB7C52E67EA650084DF1F /* Conversation AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Conversation AI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F5CAB7D32E67EA660084DF1F /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -78,6 +80,7 @@
 		F5CAB7BC2E67EA650084DF1F = {
 			isa = PBXGroup;
 			children = (
+				F588F3D62E6CBACC00A81FBF /* StoreKit.storekit */,
 				F5CAB7C72E67EA650084DF1F /* ChatAI */,
 				F5C8A0842E69AD3200E4B640 /* Frameworks */,
 				F5CAB7C62E67EA650084DF1F /* Products */,
@@ -168,6 +171,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F588F3D72E6CBACC00A81FBF /* StoreKit.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
