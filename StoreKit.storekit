@@ -20,7 +20,7 @@
     "_applicationInternalID" : "6752124007",
     "_developerTeamID" : "RU33439F6Q",
     "_failTransactionsEnabled" : false,
-    "_lastSynchronizedDate" : 778878648.22722197,
+    "_lastSynchronizedDate" : 778881670.89972699,
     "_locale" : "en_US",
     "_storefront" : "USA",
     "_storeKitErrors" : [
@@ -156,7 +156,7 @@
           ],
           "productID" : "c_ca_5900",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Chatly-Chatbox Ai ₹ 5900",
+          "referenceName" : "Chatly-Chatbox AI Yearly ₹ 5900",
           "subscriptionGroupID" : "21774584",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

@@ -90,14 +90,14 @@ struct PaywallView: View {
                         planCard(
                             title: "MONTHLY ACCESS",
                             subtitle: "Just ₹ 1,299.00 per month",
-                            priceNote: "₹ 1,299/Month",
+                            priceNote: "₹ 324.75/Week",
                             badge: nil,
                             isSelected: selectedPlan == .monthly
                         ) { selectedPlan = .monthly }
 
                         planCard(
                             title: "3-DAY FREE TRIAL",
-                            subtitle: "Then ₹ 699.00",
+                            subtitle: "Then ₹ 699.00 per week",
                             priceNote: "₹ 174/Week",
                             badge: nil,
                             isSelected: selectedPlan == .weekly

@@ -23,6 +23,56 @@ enum SupabaseError: LocalizedError {
         case .decoding(let err): return "Decoding error: \(err.localizedDescription)"
         }
 
+    // MARK: - app_user helpers
+    private struct AppUserRow: Codable {
+        var id: UUID?
+        var email: String
+        var username: String?
+        var display_name: String?
+        var avatar_url: String?
+        var status: String?
+        var created_at: Date?
+        var updated_at: Date?
+        var auth_id: String?
+        var first_name: String?
+        var last_name: String?
+    }
+
+    /// Upsert into public.app_user by email. If authId provided, it is written to auth_id.
+    func upsertAppUser(email: String, firstName: String?, lastName: String?, authId: String?) async -> Result<Void, SupabaseError> {
+        do {
+            var comps = URLComponents(url: restBase.appendingPathComponent("app_user"), resolvingAgainstBaseURL: false)!
+            comps.queryItems = [URLQueryItem(name: "on_conflict", value: "email")]
+            guard let url = comps.url else { return .failure(.invalidURL) }
+            let row = AppUserRow(id: nil,
+                                 email: email,
+                                 username: nil,
+                                 display_name: [firstName, lastName].compactMap{ $0 }.joined(separator: " ").trimmingCharacters(in: .whitespaces),
+                                 avatar_url: nil,
+                                 status: "active",
+                                 created_at: nil,
+                                 updated_at: nil,
+                                 auth_id: authId,
+                                 first_name: firstName,
+                                 last_name: lastName)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let body = try encoder.encode([row])
+            let req = authedRequest(url: url, method: "POST", jsonBody: body, prefer: "return=representation,resolution=merge-duplicates")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyText = String(data: data, encoding: .utf8) ?? "<no body>"
+                print("[SupabaseService] upsertAppUser error \(http.statusCode): \(bodyText)")
+                return .failure(.badStatus(http.statusCode))
+            }
+            return .success(())
+        } catch let e as SupabaseError {
+            return .failure(e)
+        } catch {
+            return .failure(.network(error))
+        }
+    }
     }
 }
 
@@ -156,6 +206,43 @@ struct SupabaseService {
             guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
             guard (200...299).contains(http.statusCode) else { return .failure(.badStatus(http.statusCode)) }
             return .success(())
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    // MARK: - Authentication table helpers
+    private struct AuthUserRow: Codable {
+        var id: UUID?
+        var email: String
+        var first_name: String?
+        var last_name: String?
+        var user_id: String?
+        var created_at: Date?
+    }
+
+    /// Inserts (or upserts) a user row into the `authentication` table. Returns success or an error with response body.
+    func insertAuthUser(email: String, firstName: String?, lastName: String?, userId: String?) async -> Result<Void, SupabaseError> {
+        do {
+            var comps = URLComponents(url: restBase.appendingPathComponent("authentication"), resolvingAgainstBaseURL: false)!
+            // If your table has a unique constraint on email, this will upsert by email
+            comps.queryItems = [URLQueryItem(name: "on_conflict", value: "email")]
+            guard let url = comps.url else { return .failure(.invalidURL) }
+            let row = AuthUserRow(id: nil, email: email, first_name: firstName, last_name: lastName, user_id: userId, created_at: Date())
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let body = try encoder.encode([row])
+            let req = authedRequest(url: url, method: "POST", jsonBody: body, prefer: "return=representation,resolution=merge-duplicates")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyText = String(data: data, encoding: .utf8) ?? "<no body>"
+                print("[SupabaseService] insertAuthUser error \(http.statusCode): \(bodyText)")
+                return .failure(.badStatus(http.statusCode))
+            }
+            return .success(())
+        } catch let e as SupabaseError {
+            return .failure(e)
         } catch {
             return .failure(.network(error))
         }
