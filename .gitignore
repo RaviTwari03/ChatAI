@@ -70,4 +70,8 @@ Secrets.plist
 
 # Xcode project files with sensitive build settings
 ChatAI.xcodeproj/project.pbxproj.local
+# Keep real xcconfig files ignored
 *.xcconfig
+# But allow committing a sample template for developers
+!Secrets.sample.xcconfig
+!**/Secrets.sample.xcconfig

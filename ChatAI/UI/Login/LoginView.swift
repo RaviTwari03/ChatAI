@@ -16,6 +16,13 @@ struct LoginView: View {
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
     @State private var alertMessage: String = ""
+    // OTP flow state
+    @State private var showingOTPSheet: Bool = false
+    @State private var otpCode: String = ""
+    @State private var isSendingOTP: Bool = false
+    @State private var isVerifyingOTP: Bool = false
+    // Email captured at the time OTP is sent
+    @State private var sentToEmail: String? = nil
 
     var body: some View {
         ZStack {
@@ -72,21 +79,62 @@ struct LoginView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
-                // Continue button -> navigates to HomeReplicaView
-                NavigationLink(destination: HomeView()) {
-                    Text("Continue")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            LinearGradient(colors: [Color(red: 0.16, green: 0.46, blue: 1.0), Color(red: 0.77, green: 0.25, blue: 0.99)], startPoint: .leading, endPoint: .trailing)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                        )
+                // Continue button -> Email OTP 2-step verification
+                Button {
+                    guard !isSendingOTP else { return }
+                    let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard isValidEmail(trimmed) else {
+                        alertTitle = "Invalid email"
+                        alertMessage = "Please enter a valid email address."
+                        showAlert = true
+                        return
+                    }
+                    isSendingOTP = true
+                    Task {
+                        print("[LoginView] Preparing to send OTP to: \(trimmed)")
+                        let code = OTPManager.shared.generateOTP(for: trimmed)
+                        sentToEmail = trimmed
+                        if let svc = EmailService() {
+                            let outcome = await svc.sendOTPVerbose(to: trimmed, code: code)
+                            await MainActor.run {
+                                if outcome.ok {
+                                    print("[LoginView] OTP email accepted by SMTP for: \(trimmed)")
+                                    showingOTPSheet = true
+                                } else {
+                                    alertTitle = "Email not delivered"
+                                    alertMessage = outcome.details ?? "Unknown SMTP error."
+                                    showAlert = true
+                                    print("[LoginView] OTP email failed: \(outcome.details ?? "unknown")")
+                                }
+                                isSendingOTP = false
+                            }
+                        } else {
+                            await MainActor.run {
+                                alertTitle = "SMTP not configured"
+                                alertMessage = "Please set SMTP_HOST, SMTP_EMAIL, SMTP_PASSWORD (and optional SMTP_PORT/SMTP_TLS) in Info.plist via build settings."
+                                showAlert = true
+                                isSendingOTP = false
+                                print("[LoginView] SMTP not configured.")
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        if isSendingOTP { ProgressView().tint(.white) }
+                        Text(isSendingOTP ? "Sending..." : "Continue")
+                            .font(.headline)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        LinearGradient(colors: [Color(red: 0.16, green: 0.46, blue: 1.0), Color(red: 0.77, green: 0.25, blue: 0.99)], startPoint: .leading, endPoint: .trailing)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 24)
@@ -151,7 +199,7 @@ struct LoginView: View {
                             }
                         }
                     })
-                    ProviderButton(title: "Continue with Microsoft Account", systemImage: "rectangle.grid.2x2") {}
+//                    ProviderButton(title: "Continue with Microsoft Account", systemImage: "rectangle.grid.2x2") {}
                     ProviderButton(title: "Continue with Apple", systemImage: "applelogo") {
                         if !isSigningIn {
                             isSigningIn = true
@@ -207,6 +255,13 @@ struct LoginView: View {
         .alert(isPresented: $showAlert) {
             Alert(title: Text(alertTitle), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }
+        .sheet(isPresented: $showingOTPSheet) {
+            OTPSheet(email: sentToEmail ?? email, isPresented: $showingOTPSheet, onVerified: {
+                goHome = true
+            })
+            .presentationDetents([.height(300)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: Background
@@ -226,6 +281,166 @@ struct LoginView: View {
                 .blur(radius: 26)
                 .offset(x: 40, y: 170)
                 .blendMode(.plusLighter)
+        }
+    }
+}
+
+// MARK: - Helpers & OTP Sheet
+private extension LoginView {
+    func isValidEmail(_ s: String) -> Bool {
+        let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+        return s.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    func format(seconds: Int) -> String {
+        let m = max(0, seconds) / 60
+        let s = max(0, seconds) % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+}
+
+private struct OTPSheet: View {
+    let email: String
+    @Binding var isPresented: Bool
+    var onVerified: () -> Void
+
+    @State private var code: String = ""
+    @State private var isVerifying: Bool = false
+    @State private var errorText: String?
+    @State private var infoText: String?
+    // Countdown to OTP expiry (5 min default, read from manager if available)
+    @State private var expiryRemaining: Int = 300
+    // Cooldown before allowing resend
+    @State private var resendCooldown: Int = 30
+    @State private var isResending: Bool = false
+    @State private var timer: Timer?
+
+    private func format(seconds: Int) -> String {
+        let m = max(0, seconds) / 60
+        let s = max(0, seconds) % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Enter verification code")
+                .font(.headline)
+            Text("We sent a code to \(email)")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            if let infoText { Text(infoText).foregroundColor(.green).font(.footnote) }
+#if DEBUG
+            if let devCode = OTPManager.shared.currentCode(for: email) {
+                Text("DEV OTP: \(devCode)")
+                    .font(.footnote)
+                    .foregroundColor(.yellow)
+            }
+#endif
+            TextField("6-digit code", text: $code)
+                .textContentType(.oneTimeCode)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .padding()
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(10)
+            if let errorText { Text(errorText).foregroundColor(.red).font(.footnote) }
+            HStack {
+                Image(systemName: "clock")
+                Text("Code expires in \(format(seconds: expiryRemaining))")
+            }
+            .font(.caption)
+            .foregroundColor(.secondary)
+            Button {
+                guard !isVerifying else { return }
+                isVerifying = true
+                Task { @MainActor in
+                    let ok = OTPManager.shared.verify(email: email, code: code)
+                    if ok {
+                        // Establish an authenticated session for the verified email
+                        SupabaseAuth.shared.authenticateLocally(email: email)
+                        isPresented = false
+                        onVerified()
+                    } else {
+                        errorText = "Invalid or expired code."
+                    }
+                    isVerifying = false
+                }
+            } label: {
+                HStack {
+                    if isVerifying { ProgressView().tint(.white) }
+                    Text(isVerifying ? "Verifying..." : "Verify")
+                        .font(.headline)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(colors: [Color.blue, Color.purple], startPoint: .leading, endPoint: .trailing)
+                )
+                .cornerRadius(10)
+            }
+
+            // Resend section
+            VStack(spacing: 6) {
+                Button {
+                    guard !isResending, resendCooldown <= 0 else { return }
+                    isResending = true
+                    errorText = nil
+                    infoText = nil
+                    Task {
+                        let newCode = OTPManager.shared.generateOTP(for: email)
+                        if let svc = EmailService() {
+                            let outcome = await svc.sendOTPVerbose(to: email, code: newCode)
+                            await MainActor.run {
+                                if outcome.ok {
+                                    infoText = "New code sent."
+                                    resendCooldown = 30
+                                    // reset expiry based on manager state
+                                    if let rem = OTPManager.shared.timeRemaining(for: email) {
+                                        expiryRemaining = Int(rem)
+                                    } else {
+                                        expiryRemaining = 300
+                                    }
+                                } else {
+                                    errorText = outcome.details ?? "Failed to resend code."
+                                }
+                                isResending = false
+                            }
+                        } else {
+                            await MainActor.run {
+                                errorText = "SMTP not configured."
+                                isResending = false
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isResending { ProgressView().scaleEffect(0.7) }
+                        Text(resendCooldown > 0 ? "Resend in \(resendCooldown)s" : "Resend code")
+                    }
+                }
+                .disabled(resendCooldown > 0 || isResending)
+                .buttonStyle(.plain)
+                .foregroundColor(resendCooldown > 0 ? .gray : .white)
+                .padding(.top, 2)
+            }
+        }
+        .padding(24)
+        .onAppear {
+            // Initialize expiry from manager if available
+            if let rem = OTPManager.shared.timeRemaining(for: email) {
+                expiryRemaining = Int(rem)
+            }
+            // Start a 1-second timer for countdowns
+            timer?.invalidate()
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                if expiryRemaining > 0 { expiryRemaining -= 1 }
+                if resendCooldown > 0 { resendCooldown -= 1 }
+            }
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
         }
     }
 }

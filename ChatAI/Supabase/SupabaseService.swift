@@ -10,7 +10,7 @@ import Foundation
 enum SupabaseError: LocalizedError {
     case invalidURL
     case network(Error)
-    case badStatus(Int)
+    case badStatus(Int, String?)
     case noData
     case decoding(Error)
 
@@ -18,7 +18,17 @@ enum SupabaseError: LocalizedError {
         switch self {
         case .invalidURL: return "Invalid Supabase URL"
         case .network(let err): return err.localizedDescription
-        case .badStatus(let code): return "Unexpected status code: \(code)"
+        case .badStatus(let code, let body):
+            var base = "Unexpected status code: \(code)"
+            if let body, !body.isEmpty { base += " — \(body)" }
+            if code == 401 || code == 403 {
+                if SupabaseAuth.shared.isLocalSession {
+                    base += "\nHint: You're using local OTP auth (no real Supabase JWT). Either relax RLS for anon role on this table or sign in via a real provider (Google/Apple) to get a valid JWT."
+                } else {
+                    base += "\nHint: Ensure Authorization header contains a valid Supabase access token and the table RLS policies allow your role."
+                }
+            }
+            return base
         case .noData: return "No data received"
         case .decoding(let err): return "Decoding error: \(err.localizedDescription)"
         }
@@ -46,7 +56,10 @@ struct SupabaseService {
 
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
-            guard (200...299).contains(http.statusCode) else { return .failure(.badStatus(http.statusCode)) }
+            guard (200...299).contains(http.statusCode) else {
+                let body = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, body))
+            }
             _ = data // not used
             return .success(())
         } catch {
@@ -63,11 +76,16 @@ struct SupabaseService {
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("application/json", forHTTPHeaderField: "Accept")
         req.addValue(anonKey, forHTTPHeaderField: "apikey")
-        // Use user access token if signed in, otherwise fallback to anon key
-        if let token = SupabaseAuth.shared.accessToken, !token.isEmpty {
+        // Use user access token if it's a real Supabase token.
+        // For local OTP sessions (pseudo token), fall back to anon key to avoid 401s from Supabase REST.
+        if let token = SupabaseAuth.shared.accessToken, !token.isEmpty, !SupabaseAuth.shared.isLocalSession {
             req.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         } else {
             req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        }
+        // Pass verified email for local sessions so RLS can authorize on request.header('x-client-email')
+        if SupabaseAuth.shared.isLocalSession, let email = SupabaseAuth.shared.lastEmail, !email.isEmpty {
+            req.addValue(email, forHTTPHeaderField: "x-client-email")
         }
         if let prefer { req.addValue(prefer, forHTTPHeaderField: "Prefer") }
         req.httpBody = jsonBody
@@ -80,20 +98,25 @@ struct SupabaseService {
         var title: String
         var created_at: Date?
         var user_id: String?
+        var user_email: String?
     }
 
     // Create/Upsert a recent chat
     func saveRecentChat(_ chat: RecentChat) async -> Result<RecentChat, SupabaseError> {
         do {
             let url = restBase.appendingPathComponent("recent_chats")
-            let row = RecentChatRow(id: chat.id, title: chat.title, created_at: chat.createdAt, user_id: chat.userId)
+            let emailForLocal = SupabaseAuth.shared.isLocalSession ? SupabaseAuth.shared.lastEmail : nil
+            let row = RecentChatRow(id: chat.id, title: chat.title, created_at: chat.createdAt, user_id: chat.userId, user_email: emailForLocal)
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let body = try encoder.encode([row])
             let req = authedRequest(url: url, method: "POST", jsonBody: body, prefer: "return=representation")
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
-            guard (200...299).contains(http.statusCode) else { return .failure(.badStatus(http.statusCode)) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let rows = try decoder.decode([RecentChatRow].self, from: data)
@@ -126,7 +149,10 @@ struct SupabaseService {
             let req = authedRequest(url: url, method: "GET")
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
-            guard (200...299).contains(http.statusCode) else { return .failure(.badStatus(http.statusCode)) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let rows = try decoder.decode([RecentChatRow].self, from: data)
@@ -152,9 +178,12 @@ struct SupabaseService {
             comps.queryItems = items
             guard let url = comps.url else { return .failure(.invalidURL) }
             let req = authedRequest(url: url, method: "DELETE", prefer: "return=minimal")
-            let (_, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
-            guard (200...299).contains(http.statusCode) else { return .failure(.badStatus(http.statusCode)) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
             return .success(())
         } catch {
             return .failure(.network(error))

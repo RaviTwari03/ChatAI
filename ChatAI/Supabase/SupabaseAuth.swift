@@ -35,6 +35,7 @@ final class SupabaseAuth: NSObject {
     var accessToken: String? { storedAccessToken.isEmpty ? nil : storedAccessToken }
     var refreshToken: String? { storedRefreshToken.isEmpty ? nil : storedRefreshToken }
     var isAuthenticated: Bool { accessToken != nil && Date().timeIntervalSince1970 < storedExpiresAt }
+    var isLocalSession: Bool { (accessToken ?? "").hasSuffix(".local") }
     var displayName: String {
         // Try to read a friendly name from the access token (JWT) claims
         guard let token = accessToken, let claims = Self.decodeJWT(token) else { return "Guest" }
@@ -240,6 +241,31 @@ final class SupabaseAuth: NSObject {
         storedAccessToken = ""
         storedRefreshToken = ""
         storedExpiresAt = 0
+    }
+
+    // MARK: - Local email authentication (for custom OTP flow)
+    // Issues a lightweight pseudo-JWT so App can consider the user authenticated without Supabase OAuth.
+    // Token contains {"email": email, "exp": epochSeconds}
+    func authenticateLocally(email: String, expiresIn: TimeInterval = 30 * 24 * 3600) {
+        let exp = Date().timeIntervalSince1970 + expiresIn
+        let header = ["alg": "none", "typ": "JWT"]
+        let payload: [String: Any] = ["email": email, "exp": Int(exp)]
+        func b64url(_ obj: Any) -> String {
+            let data = try! JSONSerialization.data(withJSONObject: obj, options: [])
+            var s = data.base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            return s
+        }
+        let token = b64url(header) + "." + b64url(payload) + ".local"
+        storedAccessToken = token
+        storedRefreshToken = ""
+        storedExpiresAt = exp
+        storedEmail = email
+        #if DEBUG
+        print("[SupabaseAuth] Local email session issued for \(email), exp in \(Int(expiresIn))s")
+        #endif
     }
 
     // MARK: - Private helpers
