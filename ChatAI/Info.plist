@@ -88,5 +88,9 @@
 	</array>
 	<key>XAI_API_KEY</key>
 	<string>$(XAI_API_KEY)</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>We need microphone access to capture your voice for speech-to-text.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>We convert your speech to text so you can search and chat hands-free.</string>
 </dict>
 </plist>

@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import AVFoundation
+import Speech
 
 struct HomeView: View {
     @Environment(\.dismiss) private var dismiss
@@ -18,8 +20,12 @@ struct HomeView: View {
     // Draft for bottom composer and navigation trigger
     @State private var homeDraft: String = ""
     @State private var goToChat: Bool = false
+    // Speech recognizer for voice input
+    @StateObject private var speech = SpeechRecognizer()
     // Paywall navigation
     @State private var showPaywall: Bool = false
+    // Voice chat navigation
+    @State private var showVoiceChat: Bool = false
     // Left 2/3 slide-over
     @State private var showSidePanel: Bool = false
     // Alerts
@@ -123,7 +129,12 @@ struct HomeView: View {
                 LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
                     FeatureCard(title: "Files", subtitle: "Upload", accent: .blue)
                     FeatureCard(title: "Web Links", subtitle: "Share", accent: .cyan)
-                    FeatureCard(title: "Audio", subtitle: "Record", accent: .orange)
+                    NavigationLink {
+                        VoiceChatView()
+                    } label: {
+                        FeatureCard(title: "Audio", subtitle: "Record", accent: .orange)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
@@ -168,10 +179,18 @@ struct HomeView: View {
                         .overlay(alignment: .trailing) {
                             let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             Button(action: {
-                                if canSend { Task { await startChat() } }
-                                // else: mic tapped (hook voice input later)
+                                if canSend {
+                                    Task { await startChat() }
+                                } else {
+                                    // Toggle voice input
+                                    if speech.isRecording {
+                                        speech.stop()
+                                    } else {
+                                        try? speech.start()
+                                    }
+                                }
                             }) {
-                                Image(systemName: canSend ? "paperplane.fill" : "mic.fill")
+                                Image(systemName: canSend ? "paperplane.fill" : (speech.isRecording ? "stop.circle.fill" : "mic.fill"))
                                     .foregroundColor(.white)
                                     .padding(.trailing, 10)
                             }
@@ -184,7 +203,11 @@ struct HomeView: View {
                         Spacer()
                         Image(systemName: "square.and.arrow.up")
                         Image(systemName: "viewfinder")
-                        Image(systemName: "waveform")
+                        Button {
+                            showVoiceChat = true
+                        } label: {
+                            Image(systemName: "waveform")
+                        }
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
@@ -196,6 +219,11 @@ struct HomeView: View {
                     .onChange(of: goToChat) { active in
                         if !active { homeDraft = "" }
                     }
+
+                    // Hidden navigation to Voice Chat
+                    NavigationLink(isActive: $showVoiceChat) {
+                        VoiceChatView()
+                    } label: { EmptyView() }
 
                     // Hidden navigation to Paywall
                     NavigationLink(isActive: $showPaywall) {
@@ -232,10 +260,19 @@ struct HomeView: View {
             if selectedProviderId != current {
                 selectedProviderId = current
             }
+            // Request speech and mic permissions once
+            Task { await speech.requestAuthorization() }
         }
         // When user picks a provider from the menu, switch it in the registry (persist + log)
         .onChange(of: selectedProviderId) { newId in
             APIRegistry.shared.setCurrentProvider(id: newId)
+        }
+        // Live update the draft from speech transcript
+        .onChange(of: speech.transcript) { text in
+            homeDraft = text
+            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && speech.isRecording {
+                speech.stop()
+            }
         }
     }
 

@@ -29,8 +29,13 @@ final class ChatViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
+                // Build full history for one-to-one context
+                var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant."]]
+                history.append(contentsOf: messages.map { msg in
+                    ["role": msg.isUser ? "user" : "assistant", "content": msg.text]
+                })
                 // Route through registry so the active provider (OpenAI or GROK) is used
-                let reply = try await APIRegistry.shared.complete(prompt: trimmed)
+                let reply = try await APIRegistry.shared.complete(messages: history)
                 messages.append(ChatMessage(text: reply, isUser: false))
             } catch {
                 messages.append(ChatMessage(text: "Sorry, I couldn't process that. \n\nError: \(error.localizedDescription)", isUser: false))

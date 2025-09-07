@@ -57,4 +57,28 @@ final class XAIService {
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
         return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
+
+    // New: multi-turn chat completion using full messages
+    func complete(messages: [[String: String]]) async throws -> String {
+        print("🚀 Using xAI provider (multi-turn): GROK AI [grokai]")
+        guard let url = URL(string: "https://api.x.ai/v1/chat/completions") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let body = ChatRequest(
+            model: "grok-beta",
+            messages: messages
+        )
+        req.httpBody = try JSONEncoder().encode(body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode >= 300 {
+            let text = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "XAI", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: text])
+        }
+        let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+        return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 }

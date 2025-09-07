@@ -25,6 +25,7 @@ final class OpenAIService {
     private struct ChatRequest: Encodable {
         let model: String
         let messages: [[String: String]]
+        let stream: Bool? = nil
     }
 
     private struct Choice: Decodable { let message: Message }
@@ -45,6 +46,30 @@ final class OpenAIService {
                 ["role": "system", "content": "You are a helpful assistant."],
                 ["role": "user", "content": prompt]
             ]
+        )
+        req.httpBody = try JSONEncoder().encode(body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode >= 300 {
+            let text = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "OpenAI", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: text])
+        }
+        let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+        return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    // New: multi-turn chat completion using full message list
+    func complete(messages: [[String: String]]) async throws -> String {
+        print("🚀 Using OpenAI provider (multi-turn): ChatGPT mini [openai]")
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let body = ChatRequest(
+            model: "gpt-4o-mini",
+            messages: messages
         )
         req.httpBody = try JSONEncoder().encode(body)
 

@@ -72,4 +72,18 @@ final class APIRegistry {
             return try await OpenAIService.shared.complete(prompt: prompt)
         }
     }
+
+    /// Multi-turn completion router using a full messages array
+    /// messages format: [["role": "system|user|assistant", "content": "..."]]
+    @discardableResult
+    func complete(messages: [[String: String]]) async throws -> String {
+        let selected = activeProvider()
+        print("🔁 Using provider (multi-turn): \(selected.displayName) [\(selected.id)]")
+        switch selected.id {
+        case "grokai":
+            return try await XAIService.shared.complete(messages: messages)
+        default:
+            return try await OpenAIService.shared.complete(messages: messages)
+        }
+    }
 }
