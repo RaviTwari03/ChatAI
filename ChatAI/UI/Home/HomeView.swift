@@ -8,6 +8,9 @@
 import SwiftUI
 import AVFoundation
 import Speech
+import PhotosUI
+import UniformTypeIdentifiers
+
 
 struct HomeView: View {
     @Environment(\.dismiss) private var dismiss
@@ -34,6 +37,13 @@ struct HomeView: View {
     @State private var alertMessage: String = ""
     // Recents
     @State private var recentChats: [RecentChat] = []
+    // Attachment flow to ChatView
+    @State private var showPhotosPicker: Bool = false
+    @State private var pickedItem: PhotosPickerItem? = nil
+    @State private var showDocPicker: Bool = false
+    @State private var goToChatWithAttachment: Bool = false
+    @State private var attachmentData: Data? = nil
+    @State private var attachmentMime: String? = nil
     // Delete confirmation state
     @State private var showDeleteConfirm: Bool = false
     @State private var chatToDelete: RecentChat? = nil
@@ -201,7 +211,45 @@ struct HomeView: View {
                         CapsuleSmall { Image(systemName: "plus") }
                         CapsuleSmall { Text("Web Search").font(.caption) }
                         Spacer()
-                        Image(systemName: "square.and.arrow.up")
+                        Menu {
+                            Button {
+                                showPhotosPicker = true
+                            } label: {
+                                Label("Attach Photo", systemImage: "photo")
+                            }
+                            Button {
+                                showDocPicker = true
+                            } label: {
+                                Label("Attach File", systemImage: "doc")
+                            }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .photosPicker(isPresented: $showPhotosPicker, selection: $pickedItem, matching: .images)
+                        .onChange(of: pickedItem) { item in
+                            Task {
+                                if let item, let data = try? await item.loadTransferable(type: Data.self) {
+                                    attachmentData = data
+                                    attachmentMime = "image/jpeg"
+                                    goToChatWithAttachment = true
+                                }
+                            }
+                        }
+                        .sheet(isPresented: $showDocPicker) {
+                            DocumentPickerRepresentable { url in
+                                guard let url else { return }
+                                do {
+                                    let data = try Data(contentsOf: url)
+                                    attachmentData = data
+                                    if let type = UTType(filenameExtension: url.pathExtension) {
+                                        attachmentMime = type.preferredMIMEType ?? "application/octet-stream"
+                                    } else {
+                                        attachmentMime = "application/octet-stream"
+                                    }
+                                    goToChatWithAttachment = true
+                                } catch { }
+                            }
+                        }
                         Image(systemName: "viewfinder")
                         Button {
                             showVoiceChat = true
@@ -219,6 +267,11 @@ struct HomeView: View {
                     .onChange(of: goToChat) { active in
                         if !active { homeDraft = "" }
                     }
+
+                    // Hidden navigation to Chat with attachment
+                    NavigationLink(isActive: $goToChatWithAttachment) {
+                        ChatView(initialAttachmentData: attachmentData, initialAttachmentMime: attachmentMime)
+                    } label: { EmptyView() }
 
                     // Hidden navigation to Voice Chat
                     NavigationLink(isActive: $showVoiceChat) {

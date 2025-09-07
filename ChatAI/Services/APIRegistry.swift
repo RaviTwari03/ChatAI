@@ -104,4 +104,16 @@ final class APIRegistry {
             return try await OpenAIService.shared.generateImage(prompt: prompt, size: size)
         }
     }
+
+    // MARK: - Vision Analysis Router (Image + Question)
+    func analyzeImage(question: String, imageData: Data, mimeType: String = "image/png") async throws -> String {
+        let selected = activeProvider()
+        print("👀 Using provider for vision: \(selected.displayName) [\(selected.id)]")
+        switch selected.id {
+        case "grokai":
+            throw NSError(domain: "APIRegistry.Vision", code: -200, userInfo: [NSLocalizedDescriptionKey: "Vision Q&A not supported for GROK AI yet. Switch to OpenAI in settings."])
+        default:
+            return try await OpenAIService.shared.analyzeImage(question: question, imageData: imageData, mimeType: mimeType)
+        }
+    }
 }

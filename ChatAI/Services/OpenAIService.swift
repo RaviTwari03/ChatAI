@@ -136,4 +136,51 @@ final class OpenAIService {
         }
         throw NSError(domain: "OpenAI.Image", code: -2, userInfo: [NSLocalizedDescriptionKey: "No usable image data in response"])
     }
+
+    // MARK: - Vision Chat (Image + Question)
+    private struct VisionContentImageURL: Encodable {
+        let url: String
+    }
+    private struct VisionContent: Encodable {
+        let type: String
+        let text: String?
+        let image_url: VisionContentImageURL?
+    }
+    private struct VisionMessage: Encodable {
+        let role: String
+        let content: [VisionContent]
+    }
+    private struct VisionChatRequest: Encodable {
+        let model: String
+        let messages: [VisionMessage]
+    }
+
+    /// Analyze an image with a user question using GPT-4o-mini vision
+    func analyzeImage(question: String, imageData: Data, mimeType: String = "image/png") async throws -> String {
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let b64 = imageData.base64EncodedString()
+        let dataURL = "data:\(mimeType);base64,\(b64)"
+        let user = VisionMessage(
+            role: "user",
+            content: [
+                VisionContent(type: "text", text: question.isEmpty ? "Describe this image." : question, image_url: nil),
+                VisionContent(type: "image_url", text: nil, image_url: VisionContentImageURL(url: dataURL))
+            ]
+        )
+        let body = VisionChatRequest(model: "gpt-4o-mini", messages: [user])
+        req.httpBody = try JSONEncoder().encode(body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode >= 300 {
+            let text = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "OpenAI.Vision", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: text])
+        }
+        let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+        return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 }

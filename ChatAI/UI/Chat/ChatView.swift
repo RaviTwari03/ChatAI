@@ -8,6 +8,9 @@
 import SwiftUI
 import UIKit
 import Photos
+import PhotosUI
+import UniformTypeIdentifiers
+import CoreGraphics
 
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
@@ -67,10 +70,17 @@ final class ChatViewModel: ObservableObject {
 
 struct ChatView: View {
     var initialText: String? = nil
+    var initialAttachmentData: Data? = nil
+    var initialAttachmentMime: String? = nil
     @StateObject private var vm = ChatViewModel()
     @FocusState private var focused: Bool
     @State private var autoSent = false
     // no timer state; we'll show a typing indicator bubble instead
+    @State private var pickedItem: PhotosPickerItem? = nil
+    @State private var attachedData: Data? = nil
+    @State private var attachedMime: String? = nil
+    @State private var showDocPicker: Bool = false
+    @State private var showPhotosPicker: Bool = false
 
     var body: some View {
         ZStack {
@@ -114,37 +124,116 @@ struct ChatView: View {
         }
         .safeAreaInset(edge: .bottom) {
             // Composer anchored to safe area to ensure taps reach the field
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Type a message...", text: $vm.input, axis: .vertical)
-                    .lineLimit(1...4)
-                    .textInputAutocapitalization(.sentences)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.25), lineWidth: 1)
-                    )
-                    .foregroundColor(.white)
-                    .focused($focused)
-                    .submitLabel(.send)
-                    .onSubmit { vm.send() }
-
-                Button(action: vm.send) {
-                    Image(systemName: vm.isSending ? "hourglass" : "paperplane.fill")
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .background(
-                            LinearGradient(colors: [Color.blue, Color.purple], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 8) {
+                // Composer attachment chip (ChatGPT-style)
+                if let data = attachedData {
+                    HStack(spacing: 10) {
+                        if (attachedMime ?? "").hasPrefix("image/"), let img = UIImage(data: data) {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 44, height: 44)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.25), lineWidth: 1))
+                        } else {
+                            Image(systemName: "doc.text")
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text((attachedMime ?? "").hasPrefix("image/") ? "Image attached" : "File attached")
+                                .font(.footnote)
+                                .foregroundColor(.white)
+                            Text("Ask a question and press Send")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                        Spacer(minLength: 0)
+                        Button {
+                            attachedData = nil
+                            attachedMime = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
                 }
-                .disabled(vm.isSending)
+
+                // Row: attach menu + input + send button
+                HStack(alignment: .bottom, spacing: 8) {
+                    Menu {
+                        Button { showPhotosPicker = true } label: { Label("Attach Photo", systemImage: "photo") }
+                        Button { showDocPicker = true } label: { Label("Attach File", systemImage: "doc") }
+                    } label: {
+                        Image(systemName: (attachedData == nil) ? "square.and.arrow.up" : "checkmark.circle")
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                    }
+                    .onChange(of: pickedItem) { newItem in
+                        Task {
+                            if let item = newItem, let data = try? await item.loadTransferable(type: Data.self) {
+                                attachedData = data
+                                attachedMime = "image/jpeg"
+                            }
+                        }
+                    }
+                    .sheet(isPresented: $showDocPicker) {
+                        DocumentPickerRepresentable { url in
+                            guard let url else { return }
+                            do {
+                                let data = try Data(contentsOf: url)
+                                attachedData = data
+                                if let type = UTType(filenameExtension: url.pathExtension) {
+                                    attachedMime = type.preferredMIMEType ?? "application/octet-stream"
+                                } else {
+                                    attachedMime = "application/octet-stream"
+                                }
+                            } catch { }
+                        }
+                    }
+                    .photosPicker(isPresented: $showPhotosPicker, selection: $pickedItem, matching: .images)
+
+                    TextField("Type a message...", text: $vm.input, axis: .vertical)
+                        .lineLimit(1...4)
+                        .textInputAutocapitalization(.sentences)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        )
+                        .foregroundColor(.white)
+                        .focused($focused)
+                        .submitLabel(.send)
+                    .onSubmit { triggerSend() }
+
+                    Button(action: { triggerSend() }) {
+                        Image(systemName: vm.isSending ? "hourglass" : "paperplane.fill")
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(
+                                LinearGradient(colors: [Color.blue, Color.purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(vm.isSending)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(Color.black.opacity(0.6).ignoresSafeArea())
+        }
+        .onChange(of: vm.isSending) { sending in
+            if !sending {
+                // Optional: keep attachment if you want multiple questions per image; here we clear after send
+            }
         }
         .onAppear {
             if let t = initialText, !t.isEmpty, !autoSent {
@@ -152,10 +241,90 @@ struct ChatView: View {
                 vm.send()            // immediately send and let API process
                 autoSent = true
             }
+            if attachedData == nil, let d = initialAttachmentData {
+                attachedData = d
+                attachedMime = initialAttachmentMime
+            }
             focused = true
         }
         .preferredColorScheme(.dark)
     }
+
+    // Centralized send trigger so both return key and button share logic
+    private func triggerSend() {
+        if let data = attachedData {
+            // Validate provider supports vision
+            let active = APIRegistry.shared.activeProvider().id
+            if active == "grokai" {
+                vm.messages.append(ChatMessage(text: "Image analysis requires OpenAI provider. Switch provider from Home to use Vision.", isUser: false))
+                return
+            }
+            // Size sanity check (~15MB)
+            if data.count > 15 * 1024 * 1024 {
+                vm.messages.append(ChatMessage(text: "Attachment is too large (>15MB). Please pick a smaller image.", isUser: false))
+                return
+            }
+            sendWithAttachment(data: data, mime: attachedMime)
+        } else {
+            vm.send()
+        }
+    }
+
+    // Send flow when an image is attached: show user message with image and call vision API
+    private func sendWithAttachment(data: Data, mime: String?) {
+        let trimmed = vm.input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !vm.isSending else { return }
+        vm.input = ""
+        vm.messages.append(ChatMessage(text: trimmed, isUser: true))
+        if let mimeType = mime, mimeType.hasPrefix("image/"), let image = UIImage(data: data) {
+            vm.messages.append(ChatMessage(text: "[Attached Image]", isUser: true, imageData: data))
+        } else {
+            vm.messages.append(ChatMessage(text: "[Attached File]", isUser: true))
+        }
+        vm.isSending = true
+
+        Task { @MainActor in
+            do {
+                if let mimeType = mime, mimeType.hasPrefix("image/") {
+                    let reply = try await APIRegistry.shared.analyzeImage(question: trimmed, imageData: data, mimeType: mimeType)
+                    vm.messages.append(ChatMessage(text: reply, isUser: false))
+                } else {
+                    // For non-image files, try simple text extraction for PDF/TXT and send content as context
+                    let extracted = extractText(from: data, mime: mime ?? "application/octet-stream")
+                    var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant. Use the provided document content to answer the user question."]]
+                    history.append(["role": "user", "content": "Document content:\n\n\(extracted)\n\nQuestion: \(trimmed)"])
+                    let reply = try await APIRegistry.shared.complete(messages: history)
+                    vm.messages.append(ChatMessage(text: reply, isUser: false))
+                }
+            } catch {
+                vm.messages.append(ChatMessage(text: "Vision analysis failed: \(error.localizedDescription)", isUser: false))
+            }
+            vm.isSending = false
+            // Do not clear the attachment automatically (ChatGPT-style). It remains until removed.
+        }
+    }
+
+    // Simple text extraction for PDFs and plain text
+    private func extractText(from data: Data, mime: String) -> String {
+        if mime == "text/plain", let s = String(data: data, encoding: .utf8) {
+            return s.prefix(8000).description
+        }
+        if mime == "application/pdf" {
+            if let doc = CGPDFDocument(CGDataProvider(data: data as CFData)!) {
+                var out = ""
+                let pageCount = min(doc.numberOfPages, 8)
+                for i in 1...pageCount {
+                    if let page = doc.page(at: i) {
+                        out += "\n\n[Page #\(i)]\n" + page.text() // helper below
+                    }
+                }
+                return String(out.prefix(8000))
+            }
+        }
+        return "[Unsupported file type]."
+    }
+
+    
 
     private func messageBubble(_ msg: ChatMessage) -> some View {
         HStack {
@@ -354,4 +523,41 @@ private struct ImageBubble: View {
 
 #Preview {
     NavigationStack { ChatView() }
+}
+
+// MARK: - File-scope helpers
+// Minimal PDF text extraction stub to keep build green. Can be improved with PDFKit or OCR.
+extension CGPDFPage {
+    func text() -> String { "[text extraction not implemented]" }
+}
+
+// UIDocumentPicker wrapper for SwiftUI
+struct DocumentPickerRepresentable: UIViewControllerRepresentable {
+    typealias UIViewControllerType = UIDocumentPickerViewController
+    let onPick: (URL?) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let types: [UTType] = [
+            .pdf, .plainText, .image, .png, .jpeg
+        ].compactMap { $0 }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL?) -> Void
+        init(onPick: @escaping (URL?) -> Void) { self.onPick = onPick }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onPick(urls.first)
+        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onPick(nil)
+        }
+    }
 }

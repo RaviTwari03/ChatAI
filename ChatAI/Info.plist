@@ -92,6 +92,8 @@
     <string>We need microphone access to capture your voice for speech-to-text.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>We convert your speech to text so you can search and chat hands-free.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>We need access to your Photos to let you pick images to chat about.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>We save your generated images to your Photos library when you tap Save.</string>
 </dict>
