@@ -81,4 +81,59 @@ final class OpenAIService {
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
         return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
+
+    // MARK: - Image Generation
+    private struct ImageGenRequest: Encodable {
+        let prompt: String
+        let model: String
+        let size: String
+        // NOTE: Some accounts may not accept response_format. We'll omit it and handle URL or base64 in response.
+    }
+
+    private struct ImageGenResponse: Decodable {
+        struct Item: Decodable {
+            let b64_json: String?
+            let url: String?
+        }
+        let data: [Item]
+    }
+
+    /// Generate an image from a text prompt using OpenAI's image model.
+    /// - Parameters:
+    ///   - prompt: Text description of the image to generate
+    ///   - size: Image size, e.g. "512x512", "1024x1024"
+    /// - Returns: PNG/JPEG image data decoded from base64
+    func generateImage(prompt: String, size: String = "1024x1024") async throws -> Data {
+        print("🖼️ Generating image with OpenAI: gpt-image-1 size=\(size)")
+        guard let url = URL(string: "https://api.openai.com/v1/images/generations") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let body = ImageGenRequest(prompt: prompt, model: "gpt-image-1", size: size)
+        req.httpBody = try JSONEncoder().encode(body)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, http.statusCode >= 300 {
+            let text = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "OpenAI.Image", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: text])
+        }
+
+        let decoded = try JSONDecoder().decode(ImageGenResponse.self, from: data)
+        guard let first = decoded.data.first else {
+            throw NSError(domain: "OpenAI.Image", code: -1, userInfo: [NSLocalizedDescriptionKey: "No image returned"])
+        }
+        if let b64 = first.b64_json, let imgData = Data(base64Encoded: b64) {
+            return imgData
+        }
+        if let urlStr = first.url, let url = URL(string: urlStr) {
+            let (imgData, urlResp) = try await URLSession.shared.data(from: url)
+            if let http = urlResp as? HTTPURLResponse, http.statusCode >= 300 {
+                throw NSError(domain: "OpenAI.Image", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Failed to download image from URL"])
+            }
+            return imgData
+        }
+        throw NSError(domain: "OpenAI.Image", code: -2, userInfo: [NSLocalizedDescriptionKey: "No usable image data in response"])
+    }
 }

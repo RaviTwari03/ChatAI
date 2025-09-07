@@ -7,6 +7,8 @@
 
 import SwiftUI
 import AVFoundation
+import UIKit
+import Photos
 
 struct VoiceChatView: View {
     @StateObject private var speech = SpeechRecognizer()
@@ -15,6 +17,9 @@ struct VoiceChatView: View {
     @StateObject private var tts = TTSService()
     @State private var lastTranscriptUpdate: Date = Date()
     @State private var pulse: Bool = false
+    @State private var generatedImage: UIImage? = nil
+    @State private var saveMessage: String? = nil
+    @State private var imageSaved: Bool = false
 
     var body: some View {
         ZStack {
@@ -33,24 +38,63 @@ struct VoiceChatView: View {
 
                 // Center orb is always visible with a caption underneath
                 VStack(spacing: 16) {
-                    ZStack {
-                        ParticleOrb()
-                            .frame(width: 240, height: 240)
-                            .accessibilityLabel("Listening animation")
-                        if isSending || tts.isSpeaking {
-                            SpeakingAnimation()
-                                .frame(width: 180, height: 90)
-                                .accessibilityLabel("Speaking animation")
-                                .transition(.opacity)
+                    ParticleOrb()
+                        .frame(width: 300, height: 300)
+                        .accessibilityLabel("Listening animation")
+                    if isSending {
+                        HStack(spacing: 8) {
+                            OrbitLoader(size: 22)
+                            Text("Thinking…")
+                                .foregroundColor(.cyan)
+                                .font(.subheadline.weight(.medium))
+                                .opacity(0.9)
+                        }
+                        .padding(.top, 4)
+                    } else {
+                        Text(statusCaption)
+                            .foregroundColor(.cyan)
+                            .font(.subheadline.weight(.medium))
+                            .opacity(0.9)
+                            .padding(.top, 4)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: 380)
+
+                // Show generated image if available
+                if let image = generatedImage {
+                    VStack(spacing: 10) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 320, maxHeight: 320)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                        HStack(spacing: 12) {
+                            Button(action: { Task { await saveToPhotos(image) } }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: imageSaved ? "checkmark.circle" : "square.and.arrow.down")
+                                    Text(imageSaved ? "Saved" : "Save to Photos")
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                            }
+                            .disabled(imageSaved)
+                            .foregroundColor(.white)
+                            if let msg = saveMessage {
+                                Text(msg)
+                                    .font(.footnote)
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
                         }
                     }
-                    Text(statusCaption)
-                        .foregroundColor(.cyan)
-                        .font(.subheadline.weight(.medium))
-                        .opacity(0.9)
-                        .padding(.top, 4)
+                    .padding(.horizontal, 16)
+                    .transition(.opacity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: 340)
 
                 // Recognized text preview (optional while recording)
                 if !speech.transcript.isEmpty && speech.isRecording {
@@ -128,15 +172,32 @@ struct VoiceChatView: View {
             isSending = true
         }
         do {
-            // Build one-to-one conversation history
-            var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant."]]
-            history.append(contentsOf: messages.map { m in ["role": m.isUser ? "user" : "assistant", "content": m.text] })
-            let reply = try await APIRegistry.shared.complete(messages: history)
-            await MainActor.run {
-                // Keep conversation context internally but do not render assistant text on screen
-                messages.append(ChatMessage(text: reply, isUser: false))
-                speak(reply)
-                isSending = false
+            if isImagePrompt(prompt) {
+                // Clear previous image to show fresh state
+                await MainActor.run { generatedImage = nil }
+                let clean = cleanImagePrompt(prompt)
+                let data = try await APIRegistry.shared.generateImage(prompt: clean, size: "1024x1024")
+                if let uiimg = UIImage(data: data) {
+                    await MainActor.run {
+                        generatedImage = uiimg
+                        messages.append(ChatMessage(text: "[Image generated] \(clean)", isUser: false))
+                        // Do not TTS the image
+                        isSending = false
+                    }
+                } else {
+                    throw NSError(domain: "VoiceChatView", code: -10, userInfo: [NSLocalizedDescriptionKey: "Failed to decode image data"])
+                }
+            } else {
+                // Build one-to-one conversation history
+                var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant."]]
+                history.append(contentsOf: messages.map { m in ["role": m.isUser ? "user" : "assistant", "content": m.text] })
+                let reply = try await APIRegistry.shared.complete(messages: history)
+                await MainActor.run {
+                    // Keep conversation context internally but do not render assistant text on screen
+                    messages.append(ChatMessage(text: reply, isUser: false))
+                    speak(reply)
+                    isSending = false
+                }
             }
         } catch {
             await MainActor.run {
@@ -205,6 +266,105 @@ struct VoiceChatView: View {
                 .blur(radius: 26)
                 .offset(x: 80, y: -20)
                 .blendMode(.plusLighter)
+        }
+    }
+
+    // MARK: - Image Prompt Helpers
+    private func isImagePrompt(_ text: String) -> Bool {
+        let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if lower.hasPrefix("image:") { return true }
+        let triggers = [
+            "generate an image",
+            "generate image",
+            "create an image",
+            "draw",
+            "make an image",
+            "image of",
+            "picture of",
+            "art of"
+        ]
+        return triggers.contains { lower.contains($0) }
+    }
+
+    private func cleanImagePrompt(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("image:") {
+            return String(trimmed.dropFirst("image:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Remove leading trigger phrases to produce a better prompt
+        let patterns = [
+            "generate an image of",
+            "generate image of",
+            "create an image of",
+            "make an image of",
+            "draw",
+            "image of",
+            "picture of",
+            "art of"
+        ]
+        var lower = trimmed.lowercased()
+        for p in patterns {
+            if lower.hasPrefix(p) {
+                let idx = trimmed.index(trimmed.startIndex, offsetBy: p.count)
+                let rest = trimmed[idx...]
+                return rest.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return trimmed
+    }
+
+    // MARK: - Saving
+    private func saveToPhotos(_ image: UIImage) async {
+        await MainActor.run { saveMessage = "Saving…" }
+        // Use Photos framework for add-only access
+        if #available(iOS 14, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            if status == .notDetermined {
+                let _ = await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    PHPhotoLibrary.requestAuthorization(for: .addOnly) { _ in cont.resume() }
+                }
+            }
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            await MainActor.run {
+                saveMessage = "Saved"
+                imageSaved = true
+            }
+        } catch {
+            await MainActor.run { saveMessage = "Failed: \(error.localizedDescription)" }
+        }
+        // Clear status after a delay
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await MainActor.run { saveMessage = nil }
+    }
+
+    // Orbiting loader animation (same as ChatView)
+    private struct OrbitLoader: View {
+        let size: CGFloat
+        @State private var rotation: Angle = .degrees(0)
+        var body: some View {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .frame(width: size, height: size)
+                ForEach(0..<6) { i in
+                    let angle = Angle(degrees: Double(i) * 60)
+                    Circle()
+                        .fill(Color.white.opacity(0.9))
+                        .frame(width: size * 0.12, height: size * 0.12)
+                        .offset(x: size/2)
+                        .rotationEffect(angle)
+                }
+            }
+            .rotationEffect(rotation)
+            .onAppear {
+                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                    rotation = .degrees(360)
+                }
+            }
         }
     }
 }

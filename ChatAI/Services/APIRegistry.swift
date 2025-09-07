@@ -86,4 +86,22 @@ final class APIRegistry {
             return try await OpenAIService.shared.complete(messages: messages)
         }
     }
+
+    // MARK: - Image Generation Router
+    /// Generate an image using the active provider. Currently supported: OpenAI
+    /// - Parameters:
+    ///   - prompt: Image prompt text
+    ///   - size: Size string like "512x512" or "1024x1024"
+    /// - Returns: Raw image data (PNG/JPEG)
+    func generateImage(prompt: String, size: String = "1024x1024") async throws -> Data {
+        let selected = activeProvider()
+        print("🖼️ Using provider for image gen: \(selected.displayName) [\(selected.id)]")
+        switch selected.id {
+        case "grokai":
+            // Not yet implemented for xAI
+            throw NSError(domain: "APIRegistry.Image", code: -100, userInfo: [NSLocalizedDescriptionKey: "Image generation not supported for GROK AI yet. Switch to OpenAI in settings."])
+        default:
+            return try await OpenAIService.shared.generateImage(prompt: prompt, size: size)
+        }
+    }
 }

@@ -6,11 +6,21 @@
 //
 
 import SwiftUI
+import UIKit
+import Photos
 
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let text: String
     let isUser: Bool
+    // Optional image payload for assistant responses
+    let imageData: Data?
+
+    init(text: String, isUser: Bool, imageData: Data? = nil) {
+        self.text = text
+        self.isUser = isUser
+        self.imageData = imageData
+    }
 }
 
 final class ChatViewModel: ObservableObject {
@@ -29,14 +39,24 @@ final class ChatViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
-                // Build full history for one-to-one context
-                var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant."]]
-                history.append(contentsOf: messages.map { msg in
-                    ["role": msg.isUser ? "user" : "assistant", "content": msg.text]
-                })
-                // Route through registry so the active provider (OpenAI or GROK) is used
-                let reply = try await APIRegistry.shared.complete(messages: history)
-                messages.append(ChatMessage(text: reply, isUser: false))
+                if isImagePrompt(trimmed) {
+                    let clean = cleanImagePrompt(trimmed)
+                    do {
+                        let data = try await APIRegistry.shared.generateImage(prompt: clean, size: "1024x1024")
+                        messages.append(ChatMessage(text: "[Image generated] \(clean)", isUser: false, imageData: data))
+                    } catch {
+                        messages.append(ChatMessage(text: "Image generation failed: \(error.localizedDescription)", isUser: false))
+                    }
+                } else {
+                    // Build full history for one-to-one context
+                    var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant."]]
+                    history.append(contentsOf: messages.map { msg in
+                        ["role": msg.isUser ? "user" : "assistant", "content": msg.text]
+                    })
+                    // Route through registry so the active provider (OpenAI or GROK) is used
+                    let reply = try await APIRegistry.shared.complete(messages: history)
+                    messages.append(ChatMessage(text: reply, isUser: false))
+                }
             } catch {
                 messages.append(ChatMessage(text: "Sorry, I couldn't process that. \n\nError: \(error.localizedDescription)", isUser: false))
             }
@@ -140,32 +160,40 @@ struct ChatView: View {
     private func messageBubble(_ msg: ChatMessage) -> some View {
         HStack {
             if msg.isUser { Spacer(minLength: 50) }
-            Text(msg.text)
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    msg.isUser ? AnyView(
-                        LinearGradient(colors: [Color.blue, Color.purple], startPoint: .leading, endPoint: .trailing)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    ) : AnyView(
-                        RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.18))
-                    )
+            VStack(alignment: .leading, spacing: 8) {
+                if let data = msg.imageData, let image = UIImage(data: data) {
+                    ImageBubble(image: image)
+                }
+                Text(msg.text)
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                msg.isUser ? AnyView(
+                    LinearGradient(colors: [Color.blue, Color.purple], startPoint: .leading, endPoint: .trailing)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                ) : AnyView(
+                    RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.18))
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(msg.isUser ? 0.0 : 0.15), lineWidth: 1)
-                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(msg.isUser ? 0.0 : 0.15), lineWidth: 1)
+            )
             if !msg.isUser { Spacer(minLength: 50) }
         }
     }
 
-    // Typing indicator bubble (three pulsing dots)
+    // Typing indicator bubble (orbiting loader)
     @ViewBuilder
     private var typingIndicatorBubble: some View {
         HStack {
             VStack(alignment: .leading) {
                 HStack(spacing: 6) {
-                    TypingDots()
+                    OrbitLoader(size: 22)
+                    Text("Thinking…")
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.9))
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -176,25 +204,30 @@ struct ChatView: View {
         }
     }
 
-    // Dots animation view
-    private struct TypingDots: View {
-        @State private var phase: CGFloat = 0
+    // Orbiting loader animation
+    private struct OrbitLoader: View {
+        let size: CGFloat
+        @State private var rotation: Angle = .degrees(0)
         var body: some View {
-            HStack(spacing: 6) {
-                Circle().fill(Color.white.opacity(0.9)).frame(width: 6, height: 6).scaleEffect(dotScale(0))
-                Circle().fill(Color.white.opacity(0.9)).frame(width: 6, height: 6).scaleEffect(dotScale(1))
-                Circle().fill(Color.white.opacity(0.9)).frame(width: 6, height: 6).scaleEffect(dotScale(2))
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    phase = 1
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .frame(width: size, height: size)
+                ForEach(0..<6) { i in
+                    let angle = Angle(degrees: Double(i) * 60)
+                    Circle()
+                        .fill(Color.white.opacity(0.9))
+                        .frame(width: size * 0.12, height: size * 0.12)
+                        .offset(x: size/2)
+                        .rotationEffect(angle)
                 }
             }
-        }
-        private func dotScale(_ index: Int) -> CGFloat {
-            let base: CGFloat = 0.6
-            let t = (phase + CGFloat(index) * 0.2).truncatingRemainder(dividingBy: 1)
-            return base + 0.4 * abs(sin(Double(t) * .pi))
+            .rotationEffect(rotation)
+            .onAppear {
+                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                    rotation = .degrees(360)
+                }
+            }
         }
     }
 
@@ -210,6 +243,112 @@ struct ChatView: View {
                 .offset(x: 80, y: -20)
                 .blendMode(.plusLighter)
         }
+    }
+}
+
+// MARK: - Image Prompt Helpers (shared with VoiceChatView logic)
+private func isImagePrompt(_ text: String) -> Bool {
+    let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    if lower.hasPrefix("image:") { return true }
+    let triggers = [
+        "generate an image",
+        "generate image",
+        "create an image",
+        "draw",
+        "make an image",
+        "image of",
+        "picture of",
+        "art of"
+    ]
+    return triggers.contains { lower.contains($0) }
+}
+
+private func cleanImagePrompt(_ text: String) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.lowercased().hasPrefix("image:") {
+        return String(trimmed.dropFirst("image:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    let patterns = [
+        "generate an image of",
+        "generate image of",
+        "create an image of",
+        "make an image of",
+        "draw",
+        "image of",
+        "picture of",
+        "art of"
+    ]
+    let lower = trimmed.lowercased()
+    for p in patterns {
+        if lower.hasPrefix(p) {
+            let idx = trimmed.index(trimmed.startIndex, offsetBy: p.count)
+            let rest = trimmed[idx...]
+            return String(rest).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+    return trimmed
+}
+
+// MARK: - ImageBubble subview with Save to Photos
+private struct ImageBubble: View {
+    let image: UIImage
+    @State private var status: String? = nil
+    @State private var saved: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 300, maxHeight: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.15), lineWidth: 1))
+            HStack(spacing: 12) {
+                Button(action: { Task { await saveToPhotos(image) } }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: saved ? "checkmark.circle" : "square.and.arrow.down")
+                        Text(saved ? "Saved" : "Save to Photos")
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                }
+                .disabled(saved)
+                .foregroundColor(.white)
+                if let s = status {
+                    Text(s)
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.8))
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private func saveToPhotos(_ image: UIImage) async {
+        await MainActor.run { status = "Saving…" }
+        if #available(iOS 14, *) {
+            let auth = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            if auth == .notDetermined {
+                let _ = await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    PHPhotoLibrary.requestAuthorization(for: .addOnly) { _ in cont.resume() }
+                }
+            }
+        }
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            await MainActor.run {
+                status = "Saved"
+                saved = true
+            }
+        } catch {
+            await MainActor.run { status = "Failed: \(error.localizedDescription)" }
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await MainActor.run { status = nil }
     }
 }
 
