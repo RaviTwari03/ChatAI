@@ -18,7 +18,7 @@
                BlueprintIdentifier = "F5CAB7C42E67EA650084DF1F"
                BuildableName = "Conversation AI.app"
                BlueprintName = "Conversation AI"
-               ReferencedContainer = "container:Appritic Solution AI Apps.xcodeproj">
+               ReferencedContainer = "container:Chatly -Chatbox Ai.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -47,7 +47,7 @@
             BlueprintIdentifier = "F5CAB7C42E67EA650084DF1F"
             BuildableName = "Conversation AI.app"
             BlueprintName = "Conversation AI"
-            ReferencedContainer = "container:Appritic Solution AI Apps.xcodeproj">
+            ReferencedContainer = "container:Chatly -Chatbox Ai.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
@@ -67,7 +67,7 @@
             BlueprintIdentifier = "F5CAB7C42E67EA650084DF1F"
             BuildableName = "Conversation AI.app"
             BlueprintName = "Conversation AI"
-            ReferencedContainer = "container:Appritic Solution AI Apps.xcodeproj">
+            ReferencedContainer = "container:Chatly -Chatbox Ai.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

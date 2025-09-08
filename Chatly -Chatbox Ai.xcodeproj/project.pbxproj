@@ -143,7 +143,7 @@
 					};
 				};
 			};
-			buildConfigurationList = F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "Appritic Solution AI Apps" */;
+			buildConfigurationList = F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "Chatly -Chatbox Ai" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -374,7 +374,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "Appritic Solution AI Apps" */ = {
+		F5CAB7C02E67EA650084DF1F /* Build configuration list for PBXProject "Chatly -Chatbox Ai" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F5CAB7CE2E67EA660084DF1F /* Debug */,
