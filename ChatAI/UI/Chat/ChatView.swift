@@ -81,6 +81,12 @@ struct ChatView: View {
     @State private var attachedMime: String? = nil
     @State private var showDocPicker: Bool = false
     @State private var showPhotosPicker: Bool = false
+    // Provider selection (mid-chat switch)
+    private let providers: [APIProvider] = APIRegistry.shared.providers
+    @State private var selectedProviderId: String = APIRegistry.shared.activeProvider().id
+    private var selectedDisplayName: String {
+        providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
+    }
 
     var body: some View {
         ZStack {
@@ -201,7 +207,8 @@ struct ChatView: View {
                     TextField("Type a message...", text: $vm.input, axis: .vertical)
                         .lineLimit(1...4)
                         .textInputAutocapitalization(.sentences)
-                        .padding(.horizontal, 12)
+                        .padding(.leading, 12)
+                        .padding(.trailing, 120) // leave room for provider menu inside field
                         .padding(.vertical, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12))
@@ -209,6 +216,32 @@ struct ChatView: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.25), lineWidth: 1)
                         )
+                        .overlay(alignment: .trailing) {
+                            // In-field provider switcher
+                            Menu {
+                                ForEach(providers) { p in
+                                    Button(p.displayName) { selectedProviderId = p.id }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles")
+                                        .font(.caption)
+                                    Text(selectedDisplayName)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    Capsule().fill(Color.white.opacity(0.16))
+                                )
+                                .overlay(
+                                    Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1)
+                                )
+                                .padding(.trailing, 8)
+                            }
+                        }
                         .foregroundColor(.white)
                         .focused($focused)
                         .submitLabel(.send)
@@ -246,8 +279,15 @@ struct ChatView: View {
                 attachedMime = initialAttachmentMime
             }
             focused = true
+            // Sync provider selection with persisted choice
+            let current = APIRegistry.shared.activeProvider().id
+            if selectedProviderId != current { selectedProviderId = current }
         }
         .preferredColorScheme(.dark)
+        // When user switches provider mid-chat, update registry
+        .onChange(of: selectedProviderId) { newId in
+            APIRegistry.shared.setCurrentProvider(id: newId)
+        }
     }
 
     // Centralized send trigger so both return key and button share logic
@@ -256,7 +296,7 @@ struct ChatView: View {
             // Validate provider supports vision
             let active = APIRegistry.shared.activeProvider().id
             if active == "grokai" {
-                vm.messages.append(ChatMessage(text: "Image analysis requires OpenAI provider. Switch provider from Home to use Vision.", isUser: false))
+                vm.messages.append(ChatMessage(text: "Image analysis requires OpenAI provider. Use the model switcher next to the input to change provider.", isUser: false))
                 return
             }
             // Size sanity check (~15MB)
