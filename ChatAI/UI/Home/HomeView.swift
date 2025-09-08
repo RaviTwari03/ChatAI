@@ -10,6 +10,7 @@ import AVFoundation
 import Speech
 import PhotosUI
 import UniformTypeIdentifiers
+import UIKit
 
 
 struct HomeView: View {
@@ -44,6 +45,12 @@ struct HomeView: View {
     @State private var goToChatWithAttachment: Bool = false
     @State private var attachmentData: Data? = nil
     @State private var attachmentMime: String? = nil
+    // Quick actions & feature flows
+    @State private var showImagePromptSheet: Bool = false
+    @State private var imagePromptText: String = ""
+    @State private var showLinkSheet: Bool = false
+    @State private var linkURLText: String = ""
+    @State private var showCamera: Bool = false
     // Delete confirmation state
     @State private var showDeleteConfirm: Bool = false
     @State private var chatToDelete: RecentChat? = nil
@@ -137,8 +144,17 @@ struct HomeView: View {
                 // Feature cards grid (3 equal columns)
                 let columns = Array(repeating: GridItem(.flexible(minimum: 90), spacing: 12, alignment: .top), count: 3)
                 LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
-                    FeatureCard(title: "Files", subtitle: "Upload", accent: .blue)
-                    FeatureCard(title: "Web Links", subtitle: "Share", accent: .cyan)
+                    // Files -> open document picker and route to Chat with attachment
+                    Button(action: { showDocPicker = true }) {
+                        FeatureCard(title: "Files", subtitle: "Upload", accent: .blue)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Web Links -> show URL input sheet, then navigate to Chat with prefilled text
+                    Button(action: { showLinkSheet = true }) {
+                        FeatureCard(title: "Web Links", subtitle: "Share", accent: .cyan)
+                    }
+                    .buttonStyle(.plain)
                     NavigationLink {
                         VoiceChatView()
                     } label: {
@@ -162,9 +178,18 @@ struct HomeView: View {
 
                 // Bottom quick actions
                 HStack(spacing: 12) {
-                    RoundedQuickAction(title: "Create Images")
-                    RoundedQuickAction(title: "Open Camera")
-                    RoundedQuickAction(title: "Edit Images")
+                    Button(action: { showImagePromptSheet = true }) {
+                        RoundedQuickAction(title: "Create Images")
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: { showCamera = true }) {
+                        RoundedQuickAction(title: "Open Camera")
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: { showPhotosPicker = true }) {
+                        RoundedQuickAction(title: "Edit Images")
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
@@ -250,6 +275,17 @@ struct HomeView: View {
                                 } catch { }
                             }
                         }
+                        // Camera sheet for quick action
+                        .sheet(isPresented: $showCamera) {
+                            ImagePickerRepresentable(sourceType: .camera) { image in
+                                guard let image else { return }
+                                if let data = image.jpegData(compressionQuality: 0.9) {
+                                    attachmentData = data
+                                    attachmentMime = "image/jpeg"
+                                    goToChatWithAttachment = true
+                                }
+                            }
+                        }
                         Image(systemName: "viewfinder")
                         Button {
                             showVoiceChat = true
@@ -285,6 +321,43 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
+                // Sheets for quick actions & links
+                .sheet(isPresented: $showImagePromptSheet) {
+                    PromptInputSheet(
+                        title: "Create Image",
+                        placeholder: "Describe the image you want to create",
+                        actionTitle: "Create",
+                        text: $imagePromptText,
+                        onCommit: {
+                            let t = imagePromptText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !t.isEmpty else { return }
+                            homeDraft = "image: \(t)"
+                            imagePromptText = ""
+                            showImagePromptSheet = false
+                            Task { await startChat() }
+                        },
+                        onCancel: { imagePromptText = "" }
+                    )
+                    .presentationDetents([.medium])
+                }
+                .sheet(isPresented: $showLinkSheet) {
+                    PromptInputSheet(
+                        title: "Open Web Link",
+                        placeholder: "Paste a URL (https://…)",
+                        actionTitle: "Open",
+                        text: $linkURLText,
+                        onCommit: {
+                            let t = linkURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !t.isEmpty else { return }
+                            homeDraft = "Analyze this link: \(t)"
+                            linkURLText = ""
+                            showLinkSheet = false
+                            Task { await startChat() }
+                        },
+                        onCancel: { linkURLText = "" }
+                    )
+                    .presentationDetents([.medium])
+                }
             }
 
             // MARK: - 2/3 Left Slide-Over Panel
@@ -642,6 +715,79 @@ private struct CapsuleSmall<Label: View>: View {
             .padding(.vertical, 4)
             .padding(.horizontal, 8)
             .background(Capsule().fill(Color.white.opacity(0.15)))
+    }
+}
+
+// MARK: - Support Views
+private struct PromptInputSheet: View {
+    let title: String
+    let placeholder: String
+    let actionTitle: String
+    @Binding var text: String
+    let onCommit: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField(placeholder, text: $text, axis: .vertical)
+                    .textInputAutocapitalization(.sentences)
+                    .lineLimit(1...4)
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            .padding(16)
+            .background(Color.black.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(title).foregroundColor(.white)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onCancel() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(actionTitle) { onCommit() }
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+// UIKit camera picker wrapper
+private struct ImagePickerRepresentable: UIViewControllerRepresentable {
+    typealias UIViewControllerType = UIImagePickerController
+    let sourceType: UIImagePickerController.SourceType
+    let onPick: (UIImage?) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = sourceType
+        picker.delegate = context.coordinator
+        picker.allowsEditing = false
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let onPick: (UIImage?) -> Void
+        init(onPick: @escaping (UIImage?) -> Void) { self.onPick = onPick }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            let image = info[.originalImage] as? UIImage
+            onPick(image)
+            picker.dismiss(animated: true)
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            onPick(nil)
+            picker.dismiss(animated: true)
+        }
     }
 }
 
