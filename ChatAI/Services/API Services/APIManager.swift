@@ -37,6 +37,11 @@ class APIManager {
     var geminiAPIKey: String? {
         return getAPIKey(for: "GEMINI_API_KEY")
     }
+
+    /// Get Pika API Key from secure configuration
+    var pikaAPIKey: String? {
+        return getAPIKey(for: "PIKA_API_KEY")
+    }
     
     // MARK: - Private Methods
     
@@ -64,6 +69,7 @@ class APIManager {
         let openAIValid = openAIAPIKey != nil
         let xaiValid = xaiAPIKey != nil
         let geminiValid = geminiAPIKey != nil
+        let pikaValid = pikaAPIKey != nil
         
         if !openAIValid {
             print("❌ OpenAI API key is missing or invalid")
@@ -77,7 +83,11 @@ class APIManager {
             print("❌ Gemini API key is missing or invalid")
         }
         
-        return openAIValid && xaiValid && geminiValid
+        if !pikaValid {
+            print("❌ Pika API key is missing or invalid")
+        }
+        
+        return openAIValid && xaiValid && geminiValid && pikaValid
     }
     
     /// Get configuration status for debugging
@@ -86,6 +96,7 @@ class APIManager {
         return [
             "openAI_configured": openAIAPIKey != nil,
             "xai_configured": xaiAPIKey != nil,
+            "pika_configured": pikaAPIKey != nil,
             "bundle_identifier": bundle.bundleIdentifier ?? "unknown",
             "info_plist_keys": bundle.infoDictionary?.keys.sorted() ?? []
         ]
@@ -157,6 +168,20 @@ extension APIManager {
         let looksLikeGoogle = key.hasPrefix("AIza") && key.count >= 30
         guard looksLikeGoogle else {
             throw APIKeyError.invalidKey("GEMINI_API_KEY")
+        }
+        return key
+    }
+
+    /// Get validated Pika API key or throw error
+    /// - Throws: APIKeyError if key is missing or invalid
+    /// - Returns: Valid Pika API key
+    func getValidatedPikaKey() throws -> String {
+        guard let key = pikaAPIKey else {
+            throw APIKeyError.missingKey("PIKA_API_KEY")
+        }
+        // Pika keys are opaque; basic sanity check for length
+        guard key.count >= 20 else {
+            throw APIKeyError.invalidKey("PIKA_API_KEY")
         }
         return key
     }

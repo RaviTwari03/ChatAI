@@ -339,148 +339,150 @@ struct HomeView: View {
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) { showSidePanel = false } }
 
-                // Panel
-                VStack(alignment: .leading, spacing: 16) {
-                    // User header
-                    HStack(spacing: 10) {
-                        let name = SupabaseAuth.shared.displayName
-                        ZStack {
-                            Circle().fill(Color.purple.opacity(0.6))
-                            Text(String(name.prefix(1)).uppercased())
-                                .font(.subheadline).bold()
-                                .foregroundColor(.white)
+                // Panel (scrollable)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // User header
+                        HStack(spacing: 10) {
+                            let name = SupabaseAuth.shared.displayName
+                            ZStack {
+                                Circle().fill(Color.purple.opacity(0.6))
+                                Text(String(name.prefix(1)).uppercased())
+                                    .font(.subheadline).bold()
+                                    .foregroundColor(.white)
+                            }
+                            .frame(width: 28, height: 28)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(name)
+                                    .foregroundColor(.white)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                Text("Signed in")
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .font(.caption2)
+                            }
+                            Spacer()
                         }
-                        .frame(width: 28, height: 28)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(name)
+                        .padding(.bottom, 4)
+
+                        // Search
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
+                            Text("Search")
+                                .foregroundColor(.white.opacity(0.85))
+                                .font(.subheadline)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.08))
+                        )
+
+                        // Actions
+                        VStack(alignment: .leading, spacing: 16) {
+                            menuRow(icon: "square.and.pencil", title: "New chat")
+                            menuRow(icon: "photo.on.rectangle", title: "Library")
+                            menuRow(icon: "square.grid.3x3.fill", title: "GPTs")
+                            Button {
+                                Task {
+                                    let result = await SupabaseService().testConnection()
+                                    switch result {
+                                    case .success:
+                                        alertTitle = "Supabase Connected"
+                                        alertMessage = "Auth health endpoint returned 200."
+                                    case .failure(let err):
+                                        alertTitle = "Supabase Error"
+                                        alertMessage = err.localizedDescription
+                                    }
+                                    showAlert = true
+                                }
+                            } label: {
+                                menuRow(icon: "checkmark.seal", title: "Check connection")
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Divider().background(Color.white.opacity(0.15))
+
+                        // Recents from Supabase
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Recent Chats")
+                                .foregroundColor(.white.opacity(0.6))
+                                .font(.caption)
+                                .padding(.bottom, 2)
+                            if recentChats.isEmpty {
+                                Text("No recent chats")
+                                    .foregroundColor(.white.opacity(0.6))
+                            } else {
+                                ForEach(recentChats) { rc in
+                                    HStack(alignment: .center, spacing: 8) {
+                                        NavigationLink(destination: ChatView(initialText: rc.title)) {
+                                            Text(rc.title)
+                                                .foregroundColor(.white)
+                                                .multilineTextAlignment(.leading)
+                                                .lineLimit(2)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .buttonStyle(.plain)
+                                        Button {
+                                            chatToDelete = rc
+                                            showDeleteConfirm = true
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundColor(.red.opacity(0.9))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.vertical, 6)
+                                }
+                            }
+
+                        }
+
+                        // Account actions
+                        VStack(alignment: .leading, spacing: 12) {
+                            Button {
+                                // Navigate to Paywall
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) {
+                                    showSidePanel = false
+                                }
+                                // Trigger navigation to paywall
+                                showPaywall = true
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "star.circle.fill").foregroundColor(.yellow)
+                                    Text("Upgrade to Pro")
+                                    Spacer()
+                                }
                                 .foregroundColor(.white)
                                 .font(.subheadline)
-                                .lineLimit(1)
-                            Text("Signed in")
-                                .foregroundColor(.white.opacity(0.6))
-                                .font(.caption2)
-                        }
-                        Spacer()
-                    }
-                    .padding(.bottom, 4)
+                            }
+                            .buttonStyle(.plain)
 
-                    // Search
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
-                        Text("Search")
-                            .foregroundColor(.white.opacity(0.85))
-                            .font(.subheadline)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.white.opacity(0.08))
-                    )
-
-                    // Actions
-                    VStack(alignment: .leading, spacing: 16) {
-                        menuRow(icon: "square.and.pencil", title: "New chat")
-                        menuRow(icon: "photo.on.rectangle", title: "Library")
-                        menuRow(icon: "square.grid.3x3.fill", title: "GPTs")
-                        Button {
-                            Task {
-                                let result = await SupabaseService().testConnection()
-                                switch result {
-                                case .success:
-                                    alertTitle = "Supabase Connected"
-                                    alertMessage = "Auth health endpoint returned 200."
-                                case .failure(let err):
-                                    alertTitle = "Supabase Error"
-                                    alertMessage = err.localizedDescription
+                            Button(role: .destructive) {
+                                SupabaseAuth.shared.signOut()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                    showSidePanel = false
                                 }
-                                showAlert = true
-                            }
-                        } label: {
-                            menuRow(icon: "checkmark.seal", title: "Check connection")
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Divider().background(Color.white.opacity(0.15))
-
-                    // Recents from Supabase
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Recent Chats")
-                            .foregroundColor(.white.opacity(0.6))
-                            .font(.caption)
-                            .padding(.bottom, 2)
-                        if recentChats.isEmpty {
-                            Text("No recent chats")
-                                .foregroundColor(.white.opacity(0.6))
-                        } else {
-                            ForEach(recentChats) { rc in
-                                HStack(alignment: .center, spacing: 8) {
-                                    NavigationLink(destination: ChatView(initialText: rc.title)) {
-                                        Text(rc.title)
-                                            .foregroundColor(.white)
-                                            .multilineTextAlignment(.leading)
-                                            .lineLimit(2)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    .buttonStyle(.plain)
-                                    Button {
-                                        chatToDelete = rc
-                                        showDeleteConfirm = true
-                                    } label: {
-                                        Image(systemName: "trash")
-                                            .foregroundColor(.red.opacity(0.9))
-                                    }
-                                    .buttonStyle(.plain)
+                                // Pop back to LoginView
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    Text("Sign out")
+                                    Spacer()
                                 }
-                                .padding(.vertical, 6)
                             }
+                            .tint(.red)
+                            .buttonStyle(.plain)
                         }
 
+                        Spacer(minLength: 0)
                     }
-
-                    // Account actions
-                    VStack(alignment: .leading, spacing: 12) {
-                        Button {
-                            // Navigate to Paywall
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) {
-                                showSidePanel = false
-                            }
-                            // Trigger navigation to paywall
-                            showPaywall = true
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "star.circle.fill").foregroundColor(.yellow)
-                                Text("Upgrade to Pro")
-                                Spacer()
-                            }
-                            .foregroundColor(.white)
-                            .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(role: .destructive) {
-                            SupabaseAuth.shared.signOut()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                                showSidePanel = false
-                            }
-                            // Pop back to LoginView
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                Text("Sign out")
-                                Spacer()
-                            }
-                        }
-                        .tint(.red)
-                        .buttonStyle(.plain)
-                    }
-
-                    Spacer()
+                    .padding(16)
                 }
-                .padding(16)
                 .frame(width: panelWidth, height: proxy.size.height)
                 .background(Color.black)
                 .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),

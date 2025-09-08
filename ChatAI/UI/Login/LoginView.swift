@@ -205,14 +205,16 @@ struct LoginView: View {
                             isSigningIn = true
                             Task {
                                 do {
-                                    // Native Apple sign-in using ASAuthorizationAppleIDProvider
-                                    try await SupabaseAuth.shared.startNativeAppleSignIn()
+                                    // Use Supabase OAuth (ASWebAuthenticationSession). This works without the native
+                                    // "Sign In with Apple" entitlement and uses the Apple account on the device.
+                                    try await SupabaseAuth.shared.startAppleSignIn(preferEphemeral: true)
                                     if SupabaseAuth.shared.isAuthenticated {
                                         await MainActor.run { goHome = true }
                                     }
                                 } catch {
+                                    // If OAuth flow fails, surface message
                                     signInError = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
-                                    print("[LoginView] Apple sign-in error: \(signInError ?? error.localizedDescription)")
+                                    print("[LoginView] Apple OAuth sign-in error: \(signInError ?? error.localizedDescription)")
                                     alertTitle = "Sign-in failed"
                                     alertMessage = signInError ?? "Unknown error"
                                     showAlert = true
@@ -221,6 +223,22 @@ struct LoginView: View {
                             }
                         }
                     }
+                    // Long-press the Apple button to try native sign-in (optional)
+                    .simultaneousGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in
+                        if !isSigningIn {
+                            isSigningIn = true
+                            Task {
+                                do {
+                                    try await SupabaseAuth.shared.startNativeAppleSignIn()
+                                    if SupabaseAuth.shared.isAuthenticated { await MainActor.run { goHome = true } }
+                                } catch {
+                                    // Silent fallback; native may fail if entitlement/capability is missing
+                                    print("[LoginView] Native Apple sign-in fallback failed: \(error.localizedDescription)")
+                                }
+                                isSigningIn = false
+                            }
+                        }
+                    })
                 }
                 .padding(.horizontal, 24)
 
