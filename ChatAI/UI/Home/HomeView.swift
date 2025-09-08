@@ -101,7 +101,7 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 6)
+                .padding(.top, 2) // align tighter with Dynamic Island
 
                 // Headline
                 VStack(alignment: .leading, spacing: 6) {
@@ -113,52 +113,26 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
 
-                // Search bar -> navigates to ChatView
-                NavigationLink {
-                    ChatView()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.white.opacity(0.7))
-                        Text("Search...")
-                            .foregroundColor(.white.opacity(0.7))
-                            .font(.subheadline)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.white.opacity(0.04))
-                            )
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                // Removed search bar per request
 
                 // Feature cards grid (3 equal columns)
                 let columns = Array(repeating: GridItem(.flexible(minimum: 90), spacing: 12, alignment: .top), count: 3)
                 LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
                     // Files -> open document picker and route to Chat with attachment
                     Button(action: { showDocPicker = true }) {
-                        FeatureCard(title: "Files", subtitle: "Upload", accent: .blue)
+                        FeatureCard(title: "Files", subtitle: "Upload", icon: "folder", accent: .blue)
                     }
                     .buttonStyle(.plain)
 
                     // Web Links -> show URL input sheet, then navigate to Chat with prefilled text
                     Button(action: { showLinkSheet = true }) {
-                        FeatureCard(title: "Web Links", subtitle: "Share", accent: .cyan)
+                        FeatureCard(title: "Web Links", subtitle: "Share", icon: "link", accent: .cyan)
                     }
                     .buttonStyle(.plain)
                     NavigationLink {
                         VoiceChatView()
                     } label: {
-                        FeatureCard(title: "Audio", subtitle: "Record", accent: .orange)
+                        FeatureCard(title: "Audio", subtitle: "Record", icon: "waveform", accent: .orange)
                     }
                     .buttonStyle(.plain)
                 }
@@ -667,28 +641,44 @@ private struct CapsuleChip<Label: View>: View {
 private struct FeatureCard: View {
     var title: String
     var subtitle: String
+    var icon: String
     var accent: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .foregroundColor(.white)
-                .font(.headline)
-            Text(subtitle)
-                .foregroundColor(.white.opacity(0.75))
-                .font(.caption)
-            Spacer(minLength: 0)
-            HStack { Spacer(); Image(systemName: "arrow.right").foregroundColor(.white) }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(accent, lineWidth: 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.02))
+        ZStack(alignment: .topLeading) {
+            // Soft gradient background with subtle glow
+            RoundedRectangle(cornerRadius: 18)
+                .fill(
+                    LinearGradient(colors: [accent.opacity(0.22), Color.white.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing)
                 )
-        )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18).stroke(accent, lineWidth: 1.5)
+                )
+                .shadow(color: accent.opacity(0.35), radius: 12, x: 0, y: 8)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .semibold))
+                    Text(title)
+                        .font(.headline)
+                }
+                .foregroundColor(.white)
+                Text(subtitle)
+                    .foregroundColor(.white.opacity(0.8))
+                    .font(.caption)
+                Spacer(minLength: 0)
+                HStack {
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+            }
+            .padding(14)
+        }
+        .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
     }
 }
 
