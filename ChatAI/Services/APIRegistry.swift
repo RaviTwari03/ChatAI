@@ -20,7 +20,8 @@ final class APIRegistry {
     /// Available providers exposed to the UI
     let providers: [APIProvider] = [
         APIProvider(id: "openai", displayName: "ChatGPT mini"),
-        APIProvider(id: "grokai", displayName: "GROK AI")
+        APIProvider(id: "grokai", displayName: "GROK AI"),
+        APIProvider(id: "gemini", displayName: "Gemini")
     ]
 
     private let defaults = UserDefaults.standard
@@ -68,6 +69,8 @@ final class APIRegistry {
         switch selected.id {
         case "grokai":
             return try await XAIService.shared.complete(prompt: prompt)
+        case "gemini":
+            return try await GeminiService.shared.complete(prompt: prompt)
         default:
             return try await OpenAIService.shared.complete(prompt: prompt)
         }
@@ -82,6 +85,8 @@ final class APIRegistry {
         switch selected.id {
         case "grokai":
             return try await XAIService.shared.complete(messages: messages)
+        case "gemini":
+            return try await GeminiService.shared.complete(messages: messages)
         default:
             return try await OpenAIService.shared.complete(messages: messages)
         }

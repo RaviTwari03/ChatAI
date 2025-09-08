@@ -33,6 +33,11 @@ class APIManager {
         return getAPIKey(for: "XAI_API_KEY")
     }
     
+    /// Get Google Gemini API Key from secure configuration
+    var geminiAPIKey: String? {
+        return getAPIKey(for: "GEMINI_API_KEY")
+    }
+    
     // MARK: - Private Methods
     
     /// Securely retrieve API key from bundle configuration
@@ -58,6 +63,7 @@ class APIManager {
     func validateAPIKeys() -> Bool {
         let openAIValid = openAIAPIKey != nil
         let xaiValid = xaiAPIKey != nil
+        let geminiValid = geminiAPIKey != nil
         
         if !openAIValid {
             print("❌ OpenAI API key is missing or invalid")
@@ -67,7 +73,11 @@ class APIManager {
             print("❌ xAI API key is missing or invalid")
         }
         
-        return openAIValid && xaiValid
+        if !geminiValid {
+            print("❌ Gemini API key is missing or invalid")
+        }
+        
+        return openAIValid && xaiValid && geminiValid
     }
     
     /// Get configuration status for debugging
@@ -133,6 +143,21 @@ extension APIManager {
             throw APIKeyError.invalidKey("XAI_API_KEY")
         }
         
+        return key
+    }
+
+    /// Get validated Gemini API key or throw error
+    /// - Throws: APIKeyError if key is missing or invalid
+    /// - Returns: Valid Gemini API key
+    func getValidatedGeminiKey() throws -> String {
+        guard let key = geminiAPIKey else {
+            throw APIKeyError.missingKey("GEMINI_API_KEY")
+        }
+        // Basic validation for Google API key format (usually starts with AIza and is ~39-45 chars)
+        let looksLikeGoogle = key.hasPrefix("AIza") && key.count >= 30
+        guard looksLikeGoogle else {
+            throw APIKeyError.invalidKey("GEMINI_API_KEY")
+        }
         return key
     }
 }
