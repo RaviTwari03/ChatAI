@@ -51,6 +51,8 @@ struct HomeView: View {
     @State private var showLinkSheet: Bool = false
     @State private var linkURLText: String = ""
     @State private var showCamera: Bool = false
+    @State private var showWebSearchSheet: Bool = false
+    @State private var webSearchText: String = ""
     // Delete confirmation state
     @State private var showDeleteConfirm: Bool = false
     @State private var chatToDelete: RecentChat? = nil
@@ -208,7 +210,10 @@ struct HomeView: View {
 
                     HStack(spacing: 18) {
                         CapsuleSmall { Image(systemName: "plus") }
-                        CapsuleSmall { Text("Web Search").font(.caption) }
+                        Button(action: { showWebSearchSheet = true }) {
+                            CapsuleSmall { Text("Web Search").font(.caption) }
+                        }
+                        .buttonStyle(.plain)
                         Spacer()
                         Menu {
                             Button {
@@ -329,6 +334,24 @@ struct HomeView: View {
                             Task { await startChat() }
                         },
                         onCancel: { linkURLText = "" }
+                    )
+                    .presentationDetents([.medium])
+                }
+                .sheet(isPresented: $showWebSearchSheet) {
+                    PromptInputSheet(
+                        title: "Web Search",
+                        placeholder: "What do you want to search?",
+                        actionTitle: "Search",
+                        text: $webSearchText,
+                        onCommit: {
+                            let t = webSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !t.isEmpty else { return }
+                            homeDraft = "Search the web: \(t)"
+                            webSearchText = ""
+                            showWebSearchSheet = false
+                            Task { await startChat() }
+                        },
+                        onCancel: { webSearchText = "" }
                     )
                     .presentationDetents([.medium])
                 }

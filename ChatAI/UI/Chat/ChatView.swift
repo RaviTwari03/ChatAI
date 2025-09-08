@@ -50,6 +50,18 @@ final class ChatViewModel: ObservableObject {
                     } catch {
                         messages.append(ChatMessage(text: "Image generation failed: \(error.localizedDescription)", isUser: false))
                     }
+                } else if let url = firstURL(in: trimmed) {
+                    // Fetch web page text and use as context
+                    do {
+                        let pageText = try await fetchWebPageText(from: url)
+                        var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant. Use the provided web page content to answer the user's question. When quoting, be concise and include the source URL if helpful."]]
+                        let contentSnippet = String(pageText.prefix(7000))
+                        history.append(["role": "user", "content": "Source URL: \(url.absoluteString)\n\nWeb page content:\n\n\(contentSnippet)\n\nUser question: \n\(trimmed)"])
+                        let reply = try await APIRegistry.shared.complete(messages: history)
+                        messages.append(ChatMessage(text: reply, isUser: false))
+                    } catch {
+                        messages.append(ChatMessage(text: "I couldn't fetch that page (\(url.absoluteString)). Error: \(error.localizedDescription)", isUser: false))
+                    }
                 } else {
                     // Build full history for one-to-one context
                     var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant."]]
@@ -456,6 +468,40 @@ struct ChatView: View {
 }
 
 // MARK: - Image Prompt Helpers (shared with VoiceChatView logic)
+// MARK: - Web helpers
+/// Detects the first URL in a string using NSDataDetector
+private func firstURL(in text: String) -> URL? {
+    let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+    let range = NSRange(text.startIndex..<text.endIndex, in: text)
+    let match = detector?.firstMatch(in: text, options: [], range: range)
+    if let m = match, let r = Range(m.range, in: text) {
+        let urlString = String(text[r])
+        if let url = URL(string: urlString) { return url }
+    }
+    return nil
+}
+
+/// Fetches a web page and extracts readable text from HTML.
+private func fetchWebPageText(from url: URL) async throws -> String {
+    var request = URLRequest(url: url)
+    request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+    let (data, _) = try await URLSession.shared.data(for: request)
+    guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+        return "[Unable to decode page content]"
+    }
+    // Try rich HTML -> plain text conversion
+    if let attr = try? AttributedString(markdown: html, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+        let s = String(attr.characters)
+        return s.replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+    if let data = html.data(using: .utf8),
+       let attributed = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil) {
+        return attributed.string
+    }
+    // Fallback: strip tags roughly
+    let stripped = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+    return stripped
+}
 private func isImagePrompt(_ text: String) -> Bool {
     let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
     if lower.hasPrefix("image:") { return true }
