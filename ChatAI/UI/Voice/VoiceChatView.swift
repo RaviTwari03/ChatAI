@@ -10,6 +10,7 @@ import AVFoundation
 import UIKit
 import Photos
 
+// MARK: - Main View
 struct VoiceChatView: View {
     @StateObject private var speech = SpeechRecognizer()
     @State private var messages: [ChatMessage] = []
@@ -20,134 +21,171 @@ struct VoiceChatView: View {
     @State private var generatedImage: UIImage? = nil
     @State private var saveMessage: String? = nil
     @State private var imageSaved: Bool = false
-    // Paywall presentation when out of credits
+    @State private var showVoicePicker: Bool = false
     @State private var showPaywall: Bool = false
-
+    
     var body: some View {
         ZStack {
             neonBackdrop.ignoresSafeArea()
-
+            
             VStack(spacing: 16) {
-                // Header
-                HStack {
-                    Spacer()
-                    Text("Voice Chat")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Spacer()
-                }
-                .padding(.top, 12)
-
-                // Center orb is always visible with a caption underneath
-                VStack(spacing: 16) {
-                    ParticleOrb()
-                        .frame(width: 300, height: 300)
-                        .accessibilityLabel("Listening animation")
-                    if isSending {
-                        HStack(spacing: 8) {
-                            OrbitLoader(size: 22)
-                            Text("Thinking…")
-                                .foregroundColor(.cyan)
-                                .font(.subheadline.weight(.medium))
-                                .opacity(0.9)
-                        }
-                        .padding(.top, 4)
-                    } else {
-                        Text(statusCaption)
-                            .foregroundColor(.cyan)
-                            .font(.subheadline.weight(.medium))
-                            .opacity(0.9)
-                            .padding(.top, 4)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: 380)
-
-                // Show generated image if available
+                // Header View
+                headerView
+                
+                // Main Content Area
+                mainContentView
+                
+                // Generated Image View
                 if let image = generatedImage {
-                    VStack(spacing: 10) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 320, maxHeight: 320)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
-                        HStack(spacing: 12) {
-                            Button(action: { Task { await saveToPhotos(image) } }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: imageSaved ? "checkmark.circle" : "square.and.arrow.down")
-                                    Text(imageSaved ? "Saved" : "Save to Photos")
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
-                            }
-                            .disabled(imageSaved)
-                            .foregroundColor(.white)
-                            if let msg = saveMessage {
-                                Text(msg)
-                                    .font(.footnote)
-                                    .foregroundColor(.white.opacity(0.8))
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .transition(.opacity)
-                }
-
-                // Recognized text preview (optional while recording)
-                if !speech.transcript.isEmpty && speech.isRecording {
-                    Text(speech.transcript)
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.9))
-                        .padding(.horizontal, 16)
+                    generatedImageView(image: image)
                         .transition(.opacity)
                 }
-
+                
+                // Transcript View
+                if !speech.transcript.isEmpty && speech.isRecording {
+                    transcriptView
+                }
+                
                 Spacer(minLength: 0)
             }
+        }
+        .sheet(isPresented: $showVoicePicker) {
+            VoicePickerView(selectedVoice: $tts.selectedVoice, isPresented: $showVoicePicker)
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
-        .onAppear {
-            Task {
-                await speech.requestAuthorization()
-                // Auto-start listening on enter once permissions are settled
-                if !speech.isRecording {
-                    speech.transcript = ""
-                    try? speech.start()
+        .onAppear(perform: setupSpeechRecognition)
+        .onChange(of: speech.transcript) { _ in
+            lastTranscriptUpdate = Date()
+        }
+        .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
+            checkForSilence()
+        }
+        .onDisappear(perform: cleanup)
+        .preferredColorScheme(.dark)
+    }
+    
+    // MARK: - Subviews
+    private var headerView: some View {
+        HStack {
+            Spacer()
+            Text("Voice Chat")
+                .font(.headline)
+                .foregroundColor(.white)
+            Spacer()
+            
+            // Voice Selection Button
+            Button(action: { showVoicePicker = true }) {
+                Image(systemName: "person.wave.2.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+                    .padding(8)
+                    .background(Circle().fill(Color.blue.opacity(0.2)))
+            }
+            .padding(.trailing, 16)
+        }
+        .padding(.top, 12)
+    }
+    
+    private var mainContentView: some View {
+        VStack(spacing: 16) {
+            ParticleOrb()
+                .frame(width: 300, height: 300)
+                .accessibilityLabel("Listening animation")
+            
+            if isSending {
+                HStack(spacing: 8) {
+                    OrbitLoader(size: 22)
+                    Text("Thinking…")
+                        .foregroundColor(.cyan)
+                        .font(.subheadline.weight(.medium))
+                        .opacity(0.9)
+                }
+                .padding(.top, 4)
+            } else {
+                Text(statusCaption)
+                    .foregroundColor(.cyan)
+                    .font(.subheadline.weight(.medium))
+                    .opacity(0.9)
+                    .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: 380)
+    }
+    
+    private func generatedImageView(image: UIImage) -> some View {
+        VStack(spacing: 10) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 320, maxHeight: 320)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+            
+            HStack(spacing: 12) {
+                Button(action: { Task { await saveToPhotos(image) } }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: imageSaved ? "checkmark.circle" : "square.and.arrow.down")
+                        Text(imageSaved ? "Saved" : "Save to Photos")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                }
+                .disabled(imageSaved)
+                .foregroundColor(.white)
+                
+                if let msg = saveMessage {
+                    Text(msg)
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.8))
                 }
             }
-            // After TTS finishes speaking, auto-resume listening for the next user turn
-            tts.onFinish = {
-                // Safety: don't auto-start if we're already recording or currently sending
-                guard !speech.isRecording, !isSending else { return }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private var transcriptView: some View {
+        Text(speech.transcript)
+            .font(.subheadline)
+            .foregroundColor(.white.opacity(0.9))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+    }
+    
+    // MARK: - Helper Methods
+    private func setupSpeechRecognition() {
+        Task {
+            await speech.requestAuthorization()
+            if !speech.isRecording {
                 speech.transcript = ""
                 try? speech.start()
             }
         }
-        .onChange(of: speech.transcript) { text in
-            // Update silence timer marker when transcript changes
-            lastTranscriptUpdate = Date()
+        
+        tts.onFinish = { [weak speech, isSending] in
+            guard let speech = speech, !speech.isRecording, !isSending else { return }
+            speech.transcript = ""
+            try? speech.start()
         }
-        // Silence detection: if recording and transcript is non-empty and 3s pass without change, auto-stop and send
-        .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
-            guard speech.isRecording else { return }
-            let hasSpeech = !speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            if hasSpeech && Date().timeIntervalSince(lastTranscriptUpdate) >= 2.0 {
-                micTapped() // this will stop and send
-            }
+    }
+    
+    private func checkForSilence() {
+        guard speech.isRecording else { return }
+        let hasSpeech = !speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasSpeech && Date().timeIntervalSince(lastTranscriptUpdate) >= 2.0 {
+            micTapped()
         }
-        .onDisappear {
-            // Stop any audio when leaving
-            if speech.isRecording { speech.stop() }
-            tts.stop()
-        }
-        .preferredColorScheme(.dark)
+    }
+    
+    private func cleanup() {
+        if speech.isRecording { speech.stop() }
+        tts.stop()
     }
 
     private var statusCaption: String {
@@ -398,6 +436,47 @@ struct VoiceChatView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Voice Picker View
+private struct VoicePickerView: View {
+    @Binding var selectedVoice: VoiceOption
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        NavigationView {
+            List {
+                ForEach(VoiceOption.availableVoices) { voice in
+                    Button(action: {
+                        selectedVoice = voice
+                        isPresented = false
+                    }) {
+                        HStack {
+                            Text(voice.name)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            if selectedVoice.id == voice.id {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .navigationTitle("Select Voice")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 
