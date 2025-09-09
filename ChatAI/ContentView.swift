@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var isAuthenticated: Bool = SupabaseAuth.shared.isAuthenticated
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
+    @State private var showOnboarding: Bool = false
     var body: some View {
         NavigationStack {
             if isAuthenticated {
@@ -20,6 +22,14 @@ struct ContentView: View {
         .onAppear {
             // Re-read tokens on app launch or when coming back from sign-out
             isAuthenticated = SupabaseAuth.shared.isAuthenticated
+            // Present onboarding on first launch
+            showOnboarding = !hasSeenOnboarding
+        }
+        .fullScreenCover(isPresented: $showOnboarding, onDismiss: {
+            // Ensure we don't present again after completion
+            hasSeenOnboarding = true
+        }) {
+            OnboardingView()
         }
     }
 }
