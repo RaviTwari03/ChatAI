@@ -241,6 +241,12 @@ final class SupabaseAuth: NSObject {
         storedAccessToken = ""
         storedRefreshToken = ""
         storedExpiresAt = 0
+        storedEmail = ""
+        
+        // Post notification that auth state changed
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .authStateChanged, object: nil)
+        }
     }
 
     // MARK: - Local email authentication (for custom OTP flow)
@@ -292,7 +298,7 @@ final class SupabaseAuth: NSObject {
         guard
             let accessToken = dict["access_token"] as? String,
             let refreshToken = dict["refresh_token"] as? String,
-            let expiresIn = dict["expires_in"] as? Double
+            let expiresIn = dict["expires_in"] as? TimeInterval
         else { throw URLError(.cannotParseResponse) }
 
         storedAccessToken = accessToken
@@ -300,6 +306,11 @@ final class SupabaseAuth: NSObject {
         storedExpiresAt = Date().timeIntervalSince1970 + expiresIn
         if let claims = Self.decodeJWT(accessToken), let email = claims["email"] as? String, !email.isEmpty {
             storedEmail = email
+            
+            // Post notification that auth state changed
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .authStateChanged, object: nil)
+            }
         }
     }
 

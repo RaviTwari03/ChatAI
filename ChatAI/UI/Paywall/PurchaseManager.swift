@@ -174,6 +174,7 @@
 import Foundation
 import StoreKit
 import SwiftUI
+import Supabase
 
 @MainActor
 final class PurchaseManager: ObservableObject {
@@ -194,6 +195,9 @@ final class PurchaseManager: ObservableObject {
     @Published var currentEntitlement: Product? = nil
     @Published var statusMessage: String = ""
     @Published var lastStoreKitError: String? = nil
+    
+    // Supabase service for pro status updates
+    private let supabaseService = SupabaseService()
 
     private var updatesTask: Task<Void, Never>? = nil
 
@@ -233,6 +237,17 @@ final class PurchaseManager: ObservableObject {
                 let transaction: StoreKit.Transaction = try checkVerified(verification)
                 await transaction.finish()
                 try await updateCurrentEntitlements()
+                
+                // Update pro status in Supabase
+                if let userId = await SupabaseAuth.shared.userId {
+                    let plan = product.id.hasSuffix("5900") ? "yearly" : product.id.hasSuffix("1299") ? "monthly" : "weekly"
+                    let _ = await supabaseService.rpcActivateProSelf(
+                        plan: plan,
+                        productId: product.id,
+                        transactionId: String(transaction.id)
+                    )
+                }
+                
                 statusMessage = "Purchase completed"
                 return true
 

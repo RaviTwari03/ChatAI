@@ -200,6 +200,27 @@ struct SupabaseService {
         let provider: String
     }
 
+    /// Checks if the current user has an active pro subscription
+    func checkProStatus() async -> Bool {
+        guard let userId = await SupabaseAuth.shared.userId else { return false }
+        
+        let result = await fetchMyCredits(userId: userId)
+        switch result {
+        case .success(let credits):
+            // Check if user has active pro subscription
+            if credits.is_pro {
+                if let expiresAt = credits.pro_expires_at, let expiryDate = ISO8601DateFormatter().date(from: expiresAt) {
+                    return expiryDate > Date()
+                }
+                return true // If no expiry date, assume it's a lifetime pro
+            }
+            return false
+        case .failure(let error):
+            print("Error checking pro status: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     /// Deducts one token for a search if user is not Pro; otherwise logs usage. Mirrors the consume_search_token RPC.
     func rpcConsumeSearchToken(provider: String) async -> Result<ConsumeResponse, SupabaseError> {
         do {

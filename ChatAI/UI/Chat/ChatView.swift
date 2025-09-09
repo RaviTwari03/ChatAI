@@ -46,7 +46,7 @@ final class ChatViewModel: ObservableObject {
             switch res {
             case .success(let snap):
                 if snap.is_pro, let exp = snap.pro_expires_at {
-                    creditsText = "Pro active • expires: \(exp)"
+                    creditsText = "Pro active •)"
                 } else {
                     creditsText = "Credits left: \(snap.tokens_balance)"
                 }

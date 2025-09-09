@@ -96,7 +96,7 @@ struct HomeView: View {
                     // Right chip -> opens Paywall
                     Button(action: { showPaywall = true }) {
                         CapsuleChip {
-                            Text("Try Premium")
+                            Text("Premium")
                                 .font(.subheadline)
                         }
                     }
