@@ -42,6 +42,16 @@ class APIManager {
     var pikaAPIKey: String? {
         return getAPIKey(for: "PIKA_API_KEY")
     }
+
+    /// Get DeepSeek API Key from secure configuration
+    var deepseekAPIKey: String? {
+        return getAPIKey(for: "DEEPSEEK_API_KEY")
+    }
+    
+    /// Get Claude (Anthropic) API Key from secure configuration
+    var claudeAPIKey: String? {
+        return getAPIKey(for: "CLAUDE_API_KEY")
+    }
     
     // MARK: - Private Methods
     
@@ -70,6 +80,8 @@ class APIManager {
         let xaiValid = xaiAPIKey != nil
         let geminiValid = geminiAPIKey != nil
         let pikaValid = pikaAPIKey != nil
+        let deepseekValid = deepseekAPIKey != nil
+        let claudeValid = claudeAPIKey != nil
         
         if !openAIValid {
             print("❌ OpenAI API key is missing or invalid")
@@ -87,7 +99,15 @@ class APIManager {
             print("❌ Pika API key is missing or invalid")
         }
         
-        return openAIValid && xaiValid && geminiValid && pikaValid
+        if !deepseekValid {
+            print("❌ DeepSeek API key is missing or invalid")
+        }
+        
+        if !claudeValid {
+            print("❌ Claude API key is missing or invalid")
+        }
+        
+        return openAIValid && xaiValid && geminiValid && pikaValid && deepseekValid && claudeValid
     }
     
     /// Get configuration status for debugging
@@ -97,6 +117,8 @@ class APIManager {
             "openAI_configured": openAIAPIKey != nil,
             "xai_configured": xaiAPIKey != nil,
             "pika_configured": pikaAPIKey != nil,
+            "deepseek_configured": deepseekAPIKey != nil,
+            "claude_configured": claudeAPIKey != nil,
             "bundle_identifier": bundle.bundleIdentifier ?? "unknown",
             "info_plist_keys": bundle.infoDictionary?.keys.sorted() ?? []
         ]
@@ -182,6 +204,35 @@ extension APIManager {
         // Pika keys are opaque; basic sanity check for length
         guard key.count >= 20 else {
             throw APIKeyError.invalidKey("PIKA_API_KEY")
+        }
+        return key
+    }
+
+    /// Get validated DeepSeek API key or throw error
+    /// - Throws: APIKeyError if key is missing or invalid
+    /// - Returns: Valid DeepSeek API key
+    func getValidatedDeepSeekKey() throws -> String {
+        guard let key = deepseekAPIKey else {
+            throw APIKeyError.missingKey("DEEPSEEK_API_KEY")
+        }
+        // DeepSeek uses OpenAI-compatible keys (often start with sk-)
+        guard key.hasPrefix("sk-") && key.count > 20 else {
+            throw APIKeyError.invalidKey("DEEPSEEK_API_KEY")
+        }
+        return key
+    }
+
+    /// Get validated Claude API key or throw error
+    /// - Throws: APIKeyError if key is missing or invalid
+    /// - Returns: Valid Claude (Anthropic) API key
+    func getValidatedClaudeKey() throws -> String {
+        guard let key = claudeAPIKey else {
+            throw APIKeyError.missingKey("CLAUDE_API_KEY")
+        }
+        // Claude keys commonly start with "sk-" or "sk-ant-"
+        let looksValid = (key.hasPrefix("sk-") || key.hasPrefix("sk-ant-")) && key.count > 20
+        guard looksValid else {
+            throw APIKeyError.invalidKey("CLAUDE_API_KEY")
         }
         return key
     }

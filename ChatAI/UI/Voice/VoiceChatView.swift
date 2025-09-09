@@ -20,6 +20,8 @@ struct VoiceChatView: View {
     @State private var generatedImage: UIImage? = nil
     @State private var saveMessage: String? = nil
     @State private var imageSaved: Bool = false
+    // Paywall presentation when out of credits
+    @State private var showPaywall: Bool = false
 
     var body: some View {
         ZStack {
@@ -108,6 +110,9 @@ struct VoiceChatView: View {
                 Spacer(minLength: 0)
             }
         }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
         .onAppear {
             Task {
                 await speech.requestAuthorization()
@@ -172,6 +177,33 @@ struct VoiceChatView: View {
             isSending = true
         }
         do {
+            // Consume one token per send unless user is Pro
+            let providerId = APIRegistry.shared.activeProvider().id
+            let consume = await SupabaseService().rpcConsumeSearchToken(provider: providerId)
+            switch consume {
+            case .failure(let err):
+                await MainActor.run {
+                    messages.append(ChatMessage(text: "Credits check failed: \(err.localizedDescription)", isUser: false))
+                    isSending = false
+                    showPaywall = true
+                }
+                return
+            case .success(let res):
+                if !res.allowed {
+                    await MainActor.run {
+                        let msg: String
+                        switch res.reason {
+                        case "daily_limit": msg = "Daily usage limit reached. Upgrade to Pro to continue today."
+                        case "insufficient_tokens": msg = "You're out of credits. Please upgrade to Pro or buy tokens."
+                        default: msg = "Usage limit reached. Please upgrade to Pro."
+                        }
+                        messages.append(ChatMessage(text: msg, isUser: false))
+                        isSending = false
+                        showPaywall = true
+                    }
+                    return
+                }
+            }
             if isImagePrompt(prompt) {
                 // Clear previous image to show fresh state
                 await MainActor.run { generatedImage = nil }

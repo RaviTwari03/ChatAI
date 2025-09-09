@@ -32,6 +32,29 @@ final class ChatViewModel: ObservableObject {
     ]
     @Published var input: String = ""
     @Published var isSending: Bool = false
+    @Published var outOfCredits: Bool = false
+    @Published var creditsText: String = ""
+
+    /// Refresh credits from Supabase and set a compact status string
+    func refreshCredits() async {
+        guard let uid = SupabaseAuth.shared.userId, !uid.isEmpty else {
+            await MainActor.run { creditsText = "" }
+            return
+        }
+        let res = await SupabaseService().fetchMyCredits(userId: uid)
+        await MainActor.run {
+            switch res {
+            case .success(let snap):
+                if snap.is_pro, let exp = snap.pro_expires_at {
+                    creditsText = "Pro active • expires: \(exp)"
+                } else {
+                    creditsText = "Credits left: \(snap.tokens_balance)"
+                }
+            case .failure:
+                creditsText = ""
+            }
+        }
+    }
 
     func send() {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,6 +65,34 @@ final class ChatViewModel: ObservableObject {
 
         Task { @MainActor in
             do {
+                // Consume one token per send unless user is Pro
+                let providerId = APIRegistry.shared.activeProvider().id
+                let consume = await SupabaseService().rpcConsumeSearchToken(provider: providerId)
+                switch consume {
+                case .failure(let err):
+                    messages.append(ChatMessage(text: "Credits check failed: \(err.localizedDescription)", isUser: false))
+                    isSending = false
+                    return
+                case .success(let res):
+                    guard res.allowed else {
+                        let msg: String
+                        switch res.reason {
+                        case "daily_limit": msg = "Daily usage limit reached. Upgrade to Pro to continue today."
+                        case "insufficient_tokens": msg = "You're out of credits. Please upgrade to Pro or buy tokens."
+                        default: msg = "Usage limit reached. Please upgrade to Pro."
+                        }
+                        messages.append(ChatMessage(text: msg, isUser: false))
+                        outOfCredits = true
+                        isSending = false
+                        return
+                    }
+                    // Update credits indicator from RPC response
+                    if res.is_pro_active {
+                        creditsText = "Pro active"
+                    } else {
+                        creditsText = "Credits left: \(res.tokens_left)"
+                    }
+                }
                 if isImagePrompt(trimmed) {
                     let clean = cleanImagePrompt(trimmed)
                     do {
@@ -99,6 +150,8 @@ struct ChatView: View {
     private var selectedDisplayName: String {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
     }
+    // Paywall presentation when out of credits
+    @State private var showPaywall: Bool = false
 
     var body: some View {
         ZStack {
@@ -270,6 +323,13 @@ struct ChatView: View {
                     }
                     .disabled(vm.isSending)
                 }
+                // Credits indicator (combined credits for all AI providers)
+                if !vm.creditsText.isEmpty {
+                    Text(vm.creditsText)
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.top, 2)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -294,11 +354,20 @@ struct ChatView: View {
             // Sync provider selection with persisted choice
             let current = APIRegistry.shared.activeProvider().id
             if selectedProviderId != current { selectedProviderId = current }
+            // Refresh credits snapshot on appear
+            Task { await vm.refreshCredits() }
         }
         .preferredColorScheme(.dark)
         // When user switches provider mid-chat, update registry
         .onChange(of: selectedProviderId) { newId in
             APIRegistry.shared.setCurrentProvider(id: newId)
+        }
+        // Show paywall when the view model detects out-of-credits
+        .onChange(of: vm.outOfCredits) { out in
+            if out { showPaywall = true }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
         }
     }
 
@@ -337,6 +406,35 @@ struct ChatView: View {
 
         Task { @MainActor in
             do {
+                // Consume one token before vision/text with attachment
+                let providerId = APIRegistry.shared.activeProvider().id
+                let consume = await SupabaseService().rpcConsumeSearchToken(provider: providerId)
+                switch consume {
+                case .failure(let err):
+                    vm.messages.append(ChatMessage(text: "Credits check failed: \(err.localizedDescription)", isUser: false))
+                    vm.isSending = false
+                    return
+                case .success(let res):
+                    guard res.allowed else {
+                        let msg: String
+                        switch res.reason {
+                        case "daily_limit": msg = "Daily usage limit reached. Upgrade to Pro to continue today."
+                        case "insufficient_tokens": msg = "You're out of credits. Please upgrade to Pro or buy tokens."
+                        default: msg = "Usage limit reached. Please upgrade to Pro."
+                        }
+                        vm.messages.append(ChatMessage(text: msg, isUser: false))
+                        vm.isSending = false
+                        // Notify parent view to present paywall
+                        vm.outOfCredits = true
+                        return
+                    }
+                    // Update credits indicator from RPC response
+                    if res.is_pro_active {
+                        vm.creditsText = "Pro active"
+                    } else {
+                        vm.creditsText = "Credits left: \(res.tokens_left)"
+                    }
+                }
                 if let mimeType = mime, mimeType.hasPrefix("image/") {
                     let reply = try await APIRegistry.shared.analyzeImage(question: trimmed, imageData: data, mimeType: mimeType)
                     vm.messages.append(ChatMessage(text: reply, isUser: false))

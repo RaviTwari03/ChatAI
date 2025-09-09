@@ -189,4 +189,136 @@ struct SupabaseService {
             return .failure(.network(error))
         }
     }
+
+    // MARK: - RPC Helpers (Credits & Subscriptions)
+
+    struct ConsumeResponse: Codable {
+        let allowed: Bool
+        let reason: String
+        let tokens_left: Int
+        let is_pro_active: Bool
+        let provider: String
+    }
+
+    /// Deducts one token for a search if user is not Pro; otherwise logs usage. Mirrors the consume_search_token RPC.
+    func rpcConsumeSearchToken(provider: String) async -> Result<ConsumeResponse, SupabaseError> {
+        do {
+            let url = restBase.appendingPathComponent("rpc/consume_search_token")
+            let payload = ["p_provider": provider]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [])
+            let req = authedRequest(url: url, method: "POST", jsonBody: body)
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            let decoded = try JSONDecoder().decode(ConsumeResponse.self, from: data)
+            return .success(decoded)
+        } catch let e as SupabaseError {
+            return .failure(e)
+        } catch let e as DecodingError {
+            return .failure(.decoding(e))
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    struct ActivateProResponse: Codable {
+        let ok: Bool
+        let plan: String?
+        let pro_expires_at: String?
+    }
+
+    /// Activates Pro for the current authenticated user. Mirrors the activate_pro_self RPC.
+    func rpcActivateProSelf(plan: String, productId: String? = nil, transactionId: String? = nil, platform: String = "ios", environment: String? = nil) async -> Result<ActivateProResponse, SupabaseError> {
+        do {
+            let url = restBase.appendingPathComponent("rpc/activate_pro_self")
+            let payload: [String: Any?] = [
+                "p_plan": plan,
+                "p_product_id": productId,
+                "p_transaction_id": transactionId,
+                "p_platform": platform,
+                "p_environment": environment
+            ]
+            let body = try JSONSerialization.data(withJSONObject: payload.compactMapValues { $0 }, options: [])
+            let req = authedRequest(url: url, method: "POST", jsonBody: body)
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            let decoded = try JSONDecoder().decode(ActivateProResponse.self, from: data)
+            return .success(decoded)
+        } catch let e as SupabaseError {
+            return .failure(e)
+        } catch let e as DecodingError {
+            return .failure(.decoding(e))
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    /// Deactivates Pro for the current authenticated user. Mirrors the deactivate_pro_self RPC.
+    func rpcDeactivateProSelf() async -> Result<Bool, SupabaseError> {
+        do {
+            let url = restBase.appendingPathComponent("rpc/deactivate_pro_self")
+            let req = authedRequest(url: url, method: "POST", jsonBody: Data("{}".utf8))
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any], let ok = obj["ok"] as? Bool {
+                return .success(ok)
+            }
+            return .failure(.noData)
+        } catch let e as SupabaseError {
+            return .failure(e)
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    // MARK: - Credits Fetcher (for UI display)
+
+    struct CreditsSnapshot: Codable {
+        let tokens_balance: Int
+        let is_pro: Bool
+        let pro_expires_at: String?
+    }
+
+    /// Fetches the current user's credits and pro status via REST. Requires userId.
+    func fetchMyCredits(userId: String) async -> Result<CreditsSnapshot, SupabaseError> {
+        do {
+            var comps = URLComponents(url: restBase.appendingPathComponent("app_user"), resolvingAgainstBaseURL: false)!
+            comps.queryItems = [
+                URLQueryItem(name: "select", value: "tokens_balance,is_pro,pro_expires_at"),
+                URLQueryItem(name: "id", value: "eq.\(userId)"),
+                URLQueryItem(name: "limit", value: "1")
+            ]
+            guard let url = comps.url else { return .failure(.invalidURL) }
+            let req = authedRequest(url: url, method: "GET")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            let rows = try JSONDecoder().decode([CreditsSnapshot].self, from: data)
+            if let first = rows.first {
+                return .success(first)
+            }
+            return .failure(.noData)
+        } catch let e as SupabaseError {
+            return .failure(e)
+        } catch let e as DecodingError {
+            return .failure(.decoding(e))
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
 }
