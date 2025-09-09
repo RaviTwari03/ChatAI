@@ -15,6 +15,7 @@ import UIKit
 
 struct HomeView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     // API selector for the center chip (driven by app registry)
     private let providers: [APIProvider] = APIRegistry.shared.providers
     @State private var selectedProviderId: String = APIRegistry.shared.activeProvider().id
@@ -53,6 +54,8 @@ struct HomeView: View {
     @State private var showCamera: Bool = false
     @State private var showWebSearchSheet: Bool = false
     @State private var webSearchText: String = ""
+    // Keyboard focus for bottom composer
+    @FocusState private var isComposerFocused: Bool
     // Delete confirmation state
     @State private var showDeleteConfirm: Bool = false
     @State private var chatToDelete: RecentChat? = nil
@@ -176,9 +179,13 @@ struct HomeView: View {
                         .lineLimit(1...4)
                         .foregroundColor(.white)
                         .submitLabel(.send)
+                        .focused($isComposerFocused)
                         .onSubmit {
                             let text = homeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !text.isEmpty { Task { await startChat() } }
+                            if !text.isEmpty {
+                                isComposerFocused = false
+                                Task { await startChat() }
+                            }
                         }
                         .padding(.leading, 14)
                         .padding(.trailing, 44) // room for mic/send button
@@ -191,6 +198,7 @@ struct HomeView: View {
                             let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             Button(action: {
                                 if canSend {
+                                    isComposerFocused = false
                                     Task { await startChat() }
                                 } else {
                                     // Toggle voice input
@@ -363,6 +371,9 @@ struct HomeView: View {
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
         .animation(.spring(response: 0.30, dampingFraction: 0.86, blendDuration: 0.2), value: showSidePanel)
+        // Dismiss keyboard when tapping outside
+        .contentShape(Rectangle())
+        .onTapGesture { isComposerFocused = false }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -375,7 +386,10 @@ struct HomeView: View {
             Text("This will remove the chat from your recents.")
         }
         .onChange(of: showSidePanel) { open in
-            if open { Task { await loadRecents() } }
+            if open {
+                isComposerFocused = false
+                Task { await loadRecents() }
+            }
         }
         // Keep UI state in sync with persisted selection
         .onAppear {
@@ -390,6 +404,22 @@ struct HomeView: View {
         .onChange(of: selectedProviderId) { newId in
             APIRegistry.shared.setCurrentProvider(id: newId)
         }
+        // Dismiss keyboard when app goes inactive or background
+        .onChange(of: scenePhase) { phase in
+            if phase != .active { isComposerFocused = false }
+        }
+        // Dismiss keyboard when opening any sheets/pickers
+        .onChange(of: showImagePromptSheet) { if $0 { isComposerFocused = false } }
+        .onChange(of: showLinkSheet) { if $0 { isComposerFocused = false } }
+        .onChange(of: showWebSearchSheet) { if $0 { isComposerFocused = false } }
+        .onChange(of: showPhotosPicker) { if $0 { isComposerFocused = false } }
+        .onChange(of: showDocPicker) { if $0 { isComposerFocused = false } }
+        .onChange(of: showCamera) { if $0 { isComposerFocused = false } }
+        // Dismiss keyboard when navigating away
+        .onChange(of: goToChat) { if $0 { isComposerFocused = false } }
+        .onChange(of: goToChatWithAttachment) { if $0 { isComposerFocused = false } }
+        .onChange(of: showVoiceChat) { if $0 { isComposerFocused = false } }
+        .onChange(of: showPaywall) { if $0 { isComposerFocused = false } }
         // Live update the draft from speech transcript
         .onChange(of: speech.transcript) { text in
             homeDraft = text
@@ -733,6 +763,7 @@ private struct CapsuleSmall<Label: View>: View {
 
 // MARK: - Support Views
 private struct PromptInputSheet: View {
+    @Environment(\.dismiss) private var dismiss
     let title: String
     let placeholder: String
     let actionTitle: String
@@ -759,10 +790,16 @@ private struct PromptInputSheet: View {
                     Text(title).foregroundColor(.white)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onCancel() }
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(actionTitle) { onCommit() }
+                    Button(actionTitle) {
+                        onCommit()
+                        dismiss()
+                    }
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }

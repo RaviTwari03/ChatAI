@@ -137,6 +137,7 @@ struct ChatView: View {
     var initialAttachmentMime: String? = nil
     @StateObject private var vm = ChatViewModel()
     @FocusState private var focused: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @State private var autoSent = false
     // no timer state; we'll show a typing indicator bubble instead
     @State private var pickedItem: PhotosPickerItem? = nil
@@ -362,10 +363,18 @@ struct ChatView: View {
         .onChange(of: selectedProviderId) { newId in
             APIRegistry.shared.setCurrentProvider(id: newId)
         }
+        // Dismiss keyboard when app goes inactive/background
+        .onChange(of: scenePhase) { phase in
+            if phase != .active { focused = false }
+        }
         // Show paywall when the view model detects out-of-credits
         .onChange(of: vm.outOfCredits) { out in
             if out { showPaywall = true }
         }
+        // Dismiss keyboard when opening pickers or sheets
+        .onChange(of: showPhotosPicker) { if $0 { focused = false } }
+        .onChange(of: showDocPicker) { if $0 { focused = false } }
+        .onChange(of: showPaywall) { if $0 { focused = false } }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
@@ -373,6 +382,7 @@ struct ChatView: View {
 
     // Centralized send trigger so both return key and button share logic
     private func triggerSend() {
+        focused = false
         if let data = attachedData {
             // Validate provider supports vision
             let active = APIRegistry.shared.activeProvider().id
