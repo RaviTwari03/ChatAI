@@ -10,7 +10,7 @@ import Foundation
 /// Minimal Anthropic Claude client for text chat.
 /// Requires CLAUDE_API_KEY to be provided via Info.plist (Custom iOS Target Properties -> $(CLAUDE_API_KEY))
 /// and Secrets.xcconfig.
-final class ClaudeService {
+final class ClaudeService: ImageGenerationService {
     static let shared = ClaudeService()
     private init() {}
 
@@ -145,6 +145,11 @@ private struct AnthropicErrorResponse: Decodable {
         var payload = try JSONDecoder().decode(ClaudeRequest.self, from: originalBody)
         payload = ClaudeRequest(model: model, max_tokens: payload.max_tokens, messages: payload.messages)
         return try JSONEncoder().encode(payload)
+    }
+    
+    // MARK: - ImageGenerationService
+    func generateImage(prompt: String, size: String) async throws -> Data {
+        throw ImageGenError.notSupported(provider: "Anthropic Claude")
     }
 }
 

@@ -9,7 +9,7 @@ import Foundation
 
 struct XAIError: Error, Decodable { let message: String }
 
-final class XAIService {
+final class XAIService: ImageGenerationService {
     static let shared = XAIService()
     private init() {}
 
@@ -80,5 +80,10 @@ final class XAIService {
         }
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
         return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    // MARK: - ImageGenerationService
+    func generateImage(prompt: String, size: String) async throws -> Data {
+        throw ImageGenError.notSupported(provider: "xAI Grok")
     }
 }

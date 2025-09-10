@@ -9,7 +9,7 @@ import Foundation
 
 struct OpenAIError: Error, Decodable { let message: String }
 
-final class OpenAIService {
+final class OpenAIService: ImageGenerationService {
     static let shared = OpenAIService()
     private init() {}
 

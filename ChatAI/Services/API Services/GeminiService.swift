@@ -9,7 +9,7 @@ import Foundation
 
 struct GeminiError: Error, Decodable { let message: String? }
 
-final class GeminiService {
+final class GeminiService: ImageGenerationService {
     static let shared = GeminiService()
     private init() {}
 
@@ -71,5 +71,11 @@ final class GeminiService {
         let decoded = try JSONDecoder().decode(GenerateResponse.self, from: data)
         let text = decoded.candidates.first?.content.parts.compactMap { $0.text }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return text ?? ""
+    }
+
+    // MARK: - ImageGenerationService
+    func generateImage(prompt: String, size: String) async throws -> Data {
+        // Note: Gemini image generation (Imagen) typically requires Google Cloud setup beyond simple API key usage.
+        throw ImageGenError.notSupported(provider: "Google Gemini")
     }
 }

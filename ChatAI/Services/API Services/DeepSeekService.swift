@@ -9,7 +9,7 @@ import Foundation
 
 struct DeepSeekError: Error, Decodable { let message: String }
 
-final class DeepSeekService {
+final class DeepSeekService: ImageGenerationService {
     static let shared = DeepSeekService()
     private init() {}
 
@@ -81,5 +81,10 @@ final class DeepSeekService {
         }
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
         return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    // MARK: - ImageGenerationService
+    func generateImage(prompt: String, size: String) async throws -> Data {
+        throw ImageGenError.notSupported(provider: "DeepSeek")
     }
 }

@@ -11,6 +11,7 @@ import Speech
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
+import VisionKit
 
 
 struct HomeView: View {
@@ -21,6 +22,13 @@ struct HomeView: View {
     @State private var selectedProviderId: String = APIRegistry.shared.activeProvider().id
     private var selectedDisplayName: String {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
+    }
+
+    private func startNewChatFromMenu() async {
+        await MainActor.run {
+            homeDraft = ""
+            goToChat = true
+        }
     }
     // Draft for bottom composer and navigation trigger
     @State private var homeDraft: String = ""
@@ -33,6 +41,12 @@ struct HomeView: View {
     @State private var showVoiceChat: Bool = false
     // Left 2/3 slide-over
     @State private var showSidePanel: Bool = false
+    // Library navigation
+    @State private var showLibrary: Bool = false
+    // GPTs popup
+    @State private var showProvidersSheet: Bool = false
+    // Side search
+    @State private var sideSearch: String = ""
     // Alerts
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
@@ -54,6 +68,10 @@ struct HomeView: View {
     @State private var showCamera: Bool = false
     @State private var showWebSearchSheet: Bool = false
     @State private var webSearchText: String = ""
+    // Plus menu
+    @State private var showPlusMenu: Bool = false
+    // Barcode scanner
+    @State private var showScanner: Bool = false
     // Keyboard focus for bottom composer
     @FocusState private var isComposerFocused: Bool
     // Delete confirmation state
@@ -137,7 +155,7 @@ struct HomeView: View {
                     NavigationLink {
                         VoiceChatView()
                     } label: {
-                        FeatureCard(title: "Audio", subtitle: "Record", icon: "waveform", accent: .orange)
+                        FeatureCard(title: "Voice", subtitle: "Assist", icon: "waveform", accent: .orange)
                     }
                     .buttonStyle(.plain)
                 }
@@ -217,7 +235,10 @@ struct HomeView: View {
                         }
 
                     HStack(spacing: 18) {
-                        CapsuleSmall { Image(systemName: "plus") }
+                        Button { showPlusMenu = true } label: {
+                            CapsuleSmall { Image(systemName: "plus") }
+                        }
+                        .buttonStyle(.plain)
                         Button(action: { showWebSearchSheet = true }) {
                             CapsuleSmall { Text("Web Search").font(.caption) }
                         }
@@ -262,18 +283,22 @@ struct HomeView: View {
                                 } catch { }
                             }
                         }
-                        // Camera sheet for quick action
-                        .sheet(isPresented: $showCamera) {
-                            ImagePickerRepresentable(sourceType: .camera) { image in
-                                guard let image else { return }
-                                if let data = image.jpegData(compressionQuality: 0.9) {
-                                    attachmentData = data
-                                    attachmentMime = "image/jpeg"
-                                    goToChatWithAttachment = true
+                        // Square button (viewfinder) -> quick attach photo from library
+                        Button {
+                            if #available(iOS 16.0, *) {
+                                if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                                    showScanner = true
+                                } else {
+                                    alertTitle = "Scanner Unavailable"
+                                    alertMessage = "Barcode scanner requires iOS 16+ and a supported device."
+                                    showAlert = true
                                 }
+                            } else {
+                                alertTitle = "Requires iOS 16+"
+                                alertMessage = "Update iOS to use barcode scanning."
+                                showAlert = true
                             }
-                        }
-                        Image(systemName: "viewfinder")
+                        } label: { Image(systemName: "viewfinder") }
                         Button {
                             showVoiceChat = true
                         } label: {
@@ -282,6 +307,15 @@ struct HomeView: View {
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
+
+                    // Quick Actions for + button (no camera)
+                    .confirmationDialog("Quick actions", isPresented: $showPlusMenu, titleVisibility: .visible) {
+                        Button("Create Image Prompt…") { showImagePromptSheet = true }
+                        Button("Attach Photo from Library") { showPhotosPicker = true }
+                        Button("Attach File") { showDocPicker = true }
+                        Button("Start New Chat") { Task { await startNewChatFromMenu() } }
+                        Button("Cancel", role: .cancel) {}
+                    }
 
                     // Hidden navigation when user hits send
                     NavigationLink(isActive: $goToChat) {
@@ -304,6 +338,34 @@ struct HomeView: View {
                     // Hidden navigation to Paywall
                     NavigationLink(isActive: $showPaywall) {
                         PaywallView()
+                    } label: { EmptyView() }
+
+                    // Full-screen barcode scanner
+                    .fullScreenCover(isPresented: $showScanner) {
+                        if #available(iOS 16.0, *) {
+                            BarcodeScannerContainer(
+                                onPayload: { payload in
+                                    // Use the scanned barcode to start a chat
+                                    homeDraft = "barcode: \(payload)"
+                                    showScanner = false
+                                    Task { await startChat() }
+                                },
+                                onCancel: {
+                                    showScanner = false
+                                }
+                            )
+                        } else {
+                            EmptyView()
+                        }
+                    }
+
+                    // Hidden navigation to Library; when picking an image, attach to new chat
+                    NavigationLink(isActive: $showLibrary) {
+                        LibraryView { data, mime in
+                            attachmentData = data
+                            attachmentMime = mime
+                            goToChatWithAttachment = true
+                        }
                     } label: { EmptyView() }
                 }
                 .padding(.horizontal, 14)
@@ -420,6 +482,32 @@ struct HomeView: View {
         .onChange(of: goToChatWithAttachment) { if $0 { isComposerFocused = false } }
         .onChange(of: showVoiceChat) { if $0 { isComposerFocused = false } }
         .onChange(of: showPaywall) { if $0 { isComposerFocused = false } }
+        // GPTs popup listing
+        .sheet(isPresented: $showProvidersSheet) {
+            VStack(spacing: 12) {
+                Text("Available GPTs")
+                    .font(.headline)
+                Text("\(providers.count) providers available")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                List(providers, id: \.id) { p in
+                    HStack {
+                        Text(p.displayName)
+                        Spacer()
+                        if p.id == selectedProviderId { Image(systemName: "checkmark").foregroundColor(.accentColor) }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectedProviderId = p.id
+                        APIRegistry.shared.setCurrentProvider(id: p.id)
+                    }
+                }
+                Button("Close") { showProvidersSheet = false }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .presentationDetents([.medium, .large])
+        }
         // Live update the draft from speech transcript
         .onChange(of: speech.transcript) { text in
             homeDraft = text
@@ -439,149 +527,154 @@ struct HomeView: View {
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) { showSidePanel = false } }
 
-                // Panel (scrollable)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // User header
-                        HStack(spacing: 10) {
-                            let name = SupabaseAuth.shared.displayName
-                            ZStack {
-                                Circle().fill(Color.purple.opacity(0.6))
-                                Text(String(name.prefix(1)).uppercased())
-                                    .font(.subheadline).bold()
-                                    .foregroundColor(.white)
+                // Panel with scrollable content and fixed footer
+                VStack(spacing: 0) {
+                    // Scrollable content
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            // User header
+                            HStack(spacing: 10) {
+                                let name = SupabaseAuth.shared.displayName
+                                ZStack {
+                                    Circle().fill(Color.purple.opacity(0.6))
+                                    Text(String(name.prefix(1)).uppercased())
+                                        .font(.subheadline).bold()
+                                        .foregroundColor(.white)
+                                }
+                                .frame(width: 28, height: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(name)
+                                        .foregroundColor(.white)
+                                        .font(.subheadline)
+                                        .lineLimit(1)
+                                    Text("Signed in")
+                                        .foregroundColor(.white.opacity(0.6))
+                                        .font(.caption2)
+                                }
+                                Spacer()
                             }
-                            .frame(width: 28, height: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(name)
+                            .padding(.bottom, 4)
+
+                            // Search
+                            HStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
+                                TextField("Search", text: $sideSearch)
                                     .foregroundColor(.white)
                                     .font(.subheadline)
-                                    .lineLimit(1)
-                                Text("Signed in")
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.white.opacity(0.08))
+                            )
+
+                            // Actions
+                            VStack(alignment: .leading, spacing: 16) {
+                                // New chat
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) { showSidePanel = false }
+                                    Task { await startNewChatFromMenu() }
+                                } label: {
+                                    menuRow(icon: "square.and.pencil", title: "New chat")
+                                }
+                                .buttonStyle(.plain)
+
+                                // GPTs popup
+                                Button {
+                                    showProvidersSheet = true
+                                } label: {
+                                    menuRow(icon: "square.grid.3x3.fill", title: "GPTs")
+                                }
+                                .buttonStyle(.plain)
+                                // removed "Check connection" button per request
+                            }
+
+                            Divider().background(Color.white.opacity(0.15))
+
+                            // Recents from Supabase
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Recent Chats")
                                     .foregroundColor(.white.opacity(0.6))
-                                    .font(.caption2)
-                            }
-                            Spacer()
-                        }
-                        .padding(.bottom, 4)
-
-                        // Search
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
-                            Text("Search")
-                                .foregroundColor(.white.opacity(0.85))
-                                .font(.subheadline)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.white.opacity(0.08))
-                        )
-
-                        // Actions
-                        VStack(alignment: .leading, spacing: 16) {
-                            menuRow(icon: "square.and.pencil", title: "New chat")
-                            menuRow(icon: "photo.on.rectangle", title: "Library")
-                            menuRow(icon: "square.grid.3x3.fill", title: "GPTs")
-                            Button {
-                                Task {
-                                    let result = await SupabaseService().testConnection()
-                                    switch result {
-                                    case .success:
-                                        alertTitle = "Supabase Connected"
-                                        alertMessage = "Auth health endpoint returned 200."
-                                    case .failure(let err):
-                                        alertTitle = "Supabase Error"
-                                        alertMessage = err.localizedDescription
-                                    }
-                                    showAlert = true
-                                }
-                            } label: {
-                                menuRow(icon: "checkmark.seal", title: "Check connection")
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        Divider().background(Color.white.opacity(0.15))
-
-                        // Recents from Supabase
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Recent Chats")
-                                .foregroundColor(.white.opacity(0.6))
-                                .font(.caption)
-                                .padding(.bottom, 2)
-                            if recentChats.isEmpty {
-                                Text("No recent chats")
-                                    .foregroundColor(.white.opacity(0.6))
-                            } else {
-                                ForEach(recentChats) { rc in
-                                    HStack(alignment: .center, spacing: 8) {
-                                        NavigationLink(destination: ChatView(initialText: rc.title)) {
-                                            Text(rc.title)
-                                                .foregroundColor(.white)
-                                                .multilineTextAlignment(.leading)
-                                                .lineLimit(2)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                    .font(.caption)
+                                    .padding(.bottom, 2)
+                                let list: [RecentChat] = {
+                                    let s = sideSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if s.isEmpty { return recentChats }
+                                    return recentChats.filter { $0.title.localizedCaseInsensitiveContains(s) }
+                                }()
+                                if list.isEmpty {
+                                    Text("No recent chats")
+                                        .foregroundColor(.white.opacity(0.6))
+                                } else {
+                                    ForEach(list) { rc in
+                                        HStack(alignment: .center, spacing: 8) {
+                                            NavigationLink(destination: ChatView(initialText: rc.title)) {
+                                                Text(rc.title)
+                                                    .foregroundColor(.white)
+                                                    .multilineTextAlignment(.leading)
+                                                    .lineLimit(2)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                            .buttonStyle(.plain)
+                                            Button {
+                                                chatToDelete = rc
+                                                showDeleteConfirm = true
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .foregroundColor(.red.opacity(0.9))
+                                            }
+                                            .buttonStyle(.plain)
                                         }
-                                        .buttonStyle(.plain)
-                                        Button {
-                                            chatToDelete = rc
-                                            showDeleteConfirm = true
-                                        } label: {
-                                            Image(systemName: "trash")
-                                                .foregroundColor(.red.opacity(0.9))
-                                        }
-                                        .buttonStyle(.plain)
+                                        .padding(.vertical, 6)
                                     }
-                                    .padding(.vertical, 6)
                                 }
                             }
 
+                            Spacer(minLength: 80) // Leave space above footer
                         }
-
-                        // Account actions
-                        VStack(alignment: .leading, spacing: 12) {
-                            Button {
-                                // Navigate to Paywall
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) {
-                                    showSidePanel = false
-                                }
-                                // Trigger navigation to paywall
-                                showPaywall = true
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "star.circle.fill").foregroundColor(.yellow)
-                                    Text("Upgrade to Pro")
-                                    Spacer()
-                                }
-                                .foregroundColor(.white)
-                                .font(.subheadline)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button(role: .destructive) {
-                                SupabaseAuth.shared.signOut()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                                    showSidePanel = false
-                                }
-                                // Pop back to LoginView
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    Text("Sign out")
-                                    Spacer()
-                                }
-                            }
-                            .tint(.red)
-                            .buttonStyle(.plain)
-                        }
-
-                        Spacer(minLength: 0)
+                        .padding(16)
                     }
-                    .padding(16)
+
+                    // Fixed footer pinned at bottom
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            // Navigate to Paywall
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) {
+                                showSidePanel = false
+                            }
+                            // Trigger navigation to paywall
+                            showPaywall = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "star.circle.fill").foregroundColor(.yellow)
+                                Text("Upgrade to Pro")
+                                Spacer()
+                            }
+                            .foregroundColor(.white)
+                            .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            SupabaseAuth.shared.signOut()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                showSidePanel = false
+                            }
+                            // Pop back to LoginView
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("Sign out")
+                                Spacer()
+                            }
+                        }
+                        .tint(.red)
+                        .buttonStyle(.plain)
+                        .padding(16)
+                        .background(Color.black.opacity(0.9))
+                    }
                 }
                 .frame(width: panelWidth, height: proxy.size.height)
                 .background(Color.black)
@@ -808,39 +901,3 @@ private struct PromptInputSheet: View {
     }
 }
 
-// UIKit camera picker wrapper
-private struct ImagePickerRepresentable: UIViewControllerRepresentable {
-    typealias UIViewControllerType = UIImagePickerController
-    let sourceType: UIImagePickerController.SourceType
-    let onPick: (UIImage?) -> Void
-
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = sourceType
-        picker.delegate = context.coordinator
-        picker.allowsEditing = false
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
-
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onPick: (UIImage?) -> Void
-        init(onPick: @escaping (UIImage?) -> Void) { self.onPick = onPick }
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            let image = info[.originalImage] as? UIImage
-            onPick(image)
-            picker.dismiss(animated: true)
-        }
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            onPick(nil)
-            picker.dismiss(animated: true)
-        }
-    }
-}
-
-//#Preview {
-//    NavigationStack { HomeView() }
-//}

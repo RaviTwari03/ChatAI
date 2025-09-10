@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import Combine
+import UIKit
 
 struct LoginView: View {
     @State private var email: String = ""
@@ -39,7 +41,7 @@ struct LoginView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .foregroundColor(.white.opacity(0.9))
-                    Text("ChatGPT")
+                    Text("Chatly-Chatbox AI")
                         .font(.callout)
                         .foregroundColor(.white.opacity(0.9))
                 }
@@ -79,9 +81,9 @@ struct LoginView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
-                // Continue button -> Email OTP 2-step verification
+                // Continue button -> Supabase Magic Link (creates user in Supabase Auth)
                 Button {
-                    guard !isSendingOTP else { return }
+                    guard !isSigningIn else { return }
                     let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard isValidEmail(trimmed) else {
                         alertTitle = "Invalid email"
@@ -89,39 +91,32 @@ struct LoginView: View {
                         showAlert = true
                         return
                     }
-                    isSendingOTP = true
+                    isSigningIn = true
                     Task {
-                        print("[LoginView] Preparing to send OTP to: \(trimmed)")
-                        let code = OTPManager.shared.generateOTP(for: trimmed)
-                        sentToEmail = trimmed
-                        if let svc = EmailService() {
-                            let outcome = await svc.sendOTPVerbose(to: trimmed, code: code)
+                        print("[LoginView] Requesting Supabase magic link for: \(trimmed)")
+                        do {
+                            try await SupabaseAuth.shared.sendMagicLink(to: trimmed)
                             await MainActor.run {
-                                if outcome.ok {
-                                    print("[LoginView] OTP email accepted by SMTP for: \(trimmed)")
-                                    showingOTPSheet = true
-                                } else {
-                                    alertTitle = "Email not delivered"
-                                    alertMessage = outcome.details ?? "Unknown SMTP error."
-                                    showAlert = true
-                                    print("[LoginView] OTP email failed: \(outcome.details ?? "unknown")")
-                                }
-                                isSendingOTP = false
-                            }
-                        } else {
-                            await MainActor.run {
-                                alertTitle = "SMTP not configured"
-                                alertMessage = "Please set SMTP_HOST, SMTP_EMAIL, SMTP_PASSWORD (and optional SMTP_PORT/SMTP_TLS) in Info.plist via build settings."
+                                alertTitle = "Check your email"
+                                alertMessage = "We sent you a secure sign-in link. Open it on this device to complete sign-in."
                                 showAlert = true
-                                isSendingOTP = false
-                                print("[LoginView] SMTP not configured.")
+                                isSigningIn = false
+                                sentToEmail = trimmed
+                            }
+                        } catch {
+                            await MainActor.run {
+                                alertTitle = "Could not send sign-in link"
+                                alertMessage = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
+                                showAlert = true
+                                isSigningIn = false
+                                print("[LoginView] Magic link request failed: \(alertMessage)")
                             }
                         }
                     }
                 } label: {
                     HStack {
-                        if isSendingOTP { ProgressView().tint(.white) }
-                        Text(isSendingOTP ? "Sending..." : "Continue")
+                        if isSigningIn { ProgressView().tint(.white) }
+                        Text(isSigningIn ? "Sending..." : "Continue")
                             .font(.headline)
                     }
                     .foregroundColor(.white)
@@ -153,7 +148,7 @@ struct LoginView: View {
 
                 // Provider buttons stack
                 VStack(spacing: 12) {
-                    ProviderButton(title: "Continue with Phone", systemImage: "phone") {}
+//                    ProviderButton(title: "Continue with Phone", systemImage: "phone") {}
                     ProviderButton(title: "Continue with Google", systemImage: "g.circle") {
                         if !isSigningIn {
                             isSigningIn = true
@@ -205,16 +200,36 @@ struct LoginView: View {
                             isSigningIn = true
                             Task {
                                 do {
-                                    // Use Supabase OAuth (ASWebAuthenticationSession). This works without the native
-                                    // "Sign In with Apple" entitlement and uses the Apple account on the device.
-                                    try await SupabaseAuth.shared.startAppleSignIn(preferEphemeral: true)
-                                    if SupabaseAuth.shared.isAuthenticated {
+                                    // Use Supabase OAuth (ASWebAuthenticationSession). Non-ephemeral improves reliability.
+                                    print("[LoginView] Starting Apple OAuth sign-in (non-ephemeral)")
+                                    try await SupabaseAuth.shared.startAppleSignIn(preferEphemeral: false)
+                                    // Wait briefly for callback to store session
+                                    var authed = SupabaseAuth.shared.isAuthenticated
+                                    if !authed {
+                                        for attempt in 1...10 { // ~2s total
+                                            try? await Task.sleep(nanoseconds: 200_000_000)
+                                            authed = SupabaseAuth.shared.isAuthenticated
+                                            print("[LoginView] Post-Apple callback auth check #\(attempt): \(authed)")
+                                            if authed { break }
+                                        }
+                                    }
+                                    if authed {
                                         await MainActor.run { goHome = true }
+                                    } else {
+                                        let hint = "Ensure Redirect URL is allowed in Supabase (/auth/v1/callback under your project URL) and app URL Scheme is configured (chatai)."
+                                        let diags = SupabaseAuth.shared.diagnosticsForApple()
+                                        signInError = "Apple sign-in did not complete.\n\n" + hint + "\n\nDiagnostics:\n" + diags
+                                        print("[LoginView] Apple sign-in completed without tokens. \(hint)\n\nDIAGS:\n\(diags)")
+                                        alertTitle = "Sign-in didn't complete"
+                                        alertMessage = signInError ?? "Unknown issue"
+                                        showAlert = true
                                     }
                                 } catch {
                                     // If OAuth flow fails, surface message
-                                    signInError = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
-                                    print("[LoginView] Apple OAuth sign-in error: \(signInError ?? error.localizedDescription)")
+                                    let base = (error as? SupabaseAuth.AuthError)?.errorDescription ?? error.localizedDescription
+                                    let diags = SupabaseAuth.shared.diagnosticsForApple()
+                                    signInError = base + "\n\nDiagnostics:\n" + diags
+                                    print("[LoginView] Apple OAuth sign-in error: \(base)\n\nDIAGS:\n\(diags)")
                                     alertTitle = "Sign-in failed"
                                     alertMessage = signInError ?? "Unknown error"
                                     showAlert = true
@@ -267,19 +282,28 @@ struct LoginView: View {
                 goHome = true
             }
         }
+        // Log when global auth state changes (helps verify OTP auth path)
+        .onReceive(NotificationCenter.default.publisher(for: .authStateChanged)) { _ in
+            let status = SupabaseAuth.shared.isAuthenticated ? "AUTHENTICATED" : "NOT AUTHENTICATED"
+            print("[LoginView] Received authStateChanged notification -> \(status). Email=\(SupabaseAuth.shared.lastEmail ?? "<none>")")
+            if SupabaseAuth.shared.isAuthenticated {
+                print("[LoginView] Navigating to Home due to authenticated state.")
+                goHome = true
+            }
+        }
         .navigationDestination(isPresented: $goHome) {
             HomeView()
         }
-        .alert(isPresented: $showAlert) {
-            Alert(title: Text(alertTitle), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("Copy Details") {
+                var payload = alertTitle + "\n\n" + (alertMessage)
+                UIPasteboard.general.string = payload
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(alertMessage)
         }
-        .sheet(isPresented: $showingOTPSheet) {
-            OTPSheet(email: sentToEmail ?? email, isPresented: $showingOTPSheet, onVerified: {
-                goHome = true
-            })
-            .presentationDetents([.height(300)])
-            .presentationDragIndicator(.visible)
-        }
+        // Supabase magic link flow: no OTP sheet; session will be stored when the user returns via redirect
     }
 
     // MARK: Background
@@ -370,15 +394,47 @@ private struct OTPSheet: View {
             .foregroundColor(.secondary)
             Button {
                 guard !isVerifying else { return }
+                // Basic client-side validation for OTP format
+                let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.count == 6, CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: trimmed)) else {
+                    errorText = "Please enter the 6-digit code."
+                    return
+                }
                 isVerifying = true
                 Task { @MainActor in
-                    let ok = OTPManager.shared.verify(email: email, code: code)
+                    print("[OTPSheet] Verifying OTP for email=\(email). EnteredCode=\(trimmed)")
+                    let ok = OTPManager.shared.verify(email: email, code: trimmed)
+                    print("[OTPSheet] OTP verification result: \(ok ? "SUCCESS" : "FAIL").")
                     if ok {
                         // Establish an authenticated session for the verified email
                         SupabaseAuth.shared.authenticateLocally(email: email)
-                        isPresented = false
-                        onVerified()
+                        // Double-check that the session is actually established before proceeding
+                        if SupabaseAuth.shared.isAuthenticated {
+                            print("[OTPSheet] Local session established. Proceeding to dismiss and navigate home.")
+                            isPresented = false
+                            onVerified()
+                        } else {
+                            print("[OTPSheet] Local session NOT established immediately. Will retry briefly...")
+                            var established = SupabaseAuth.shared.isAuthenticated
+                            if !established {
+                                for attempt in 1...5 {
+                                    try? await Task.sleep(nanoseconds: 120_000_000) // 120ms
+                                    established = SupabaseAuth.shared.isAuthenticated
+                                    print("[OTPSheet] Re-check isAuthenticated attempt #\(attempt): \(established)")
+                                    if established { break }
+                                }
+                            }
+                            if established {
+                                print("[OTPSheet] Local session established after retry. Proceeding.")
+                                isPresented = false
+                                onVerified()
+                            } else {
+                                print("[OTPSheet] Local session still NOT established after retries.")
+                                errorText = "Failed to establish session. Please try again."
+                            }
+                        }
                     } else {
+                        print("[OTPSheet] Invalid or expired code.")
                         errorText = "Invalid or expired code."
                     }
                     isVerifying = false

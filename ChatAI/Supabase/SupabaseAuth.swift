@@ -26,6 +26,34 @@ final class SupabaseAuth: NSObject {
     private var authSession: ASWebAuthenticationSession?
     private var appleContinuation: CheckedContinuation<Void, Error>?
 
+    // MARK: - Diagnostics
+    private func isURLSchemeRegistered(_ scheme: String) -> Bool {
+        guard let urlTypes = Bundle.main.infoDictionary?["CFBundleURLTypes"] as? [[String: Any]] else { return false }
+        for item in urlTypes {
+            if let schemes = item["CFBundleURLSchemes"] as? [String], schemes.contains(where: { $0.caseInsensitiveCompare(scheme) == .orderedSame }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Returns a multi-line diagnostics string to help troubleshoot Apple OAuth configuration.
+    func diagnosticsForApple() -> String {
+        let bundleID = Bundle.main.bundleIdentifier ?? "<unknown>"
+        let schemeOK = isURLSchemeRegistered(redirectScheme)
+        let expectedOAuthCallback = baseURL.appendingPathComponent("auth/v1/callback").absoluteString
+        let now = ISO8601DateFormatter().string(from: Date())
+        var lines: [String] = []
+        lines.append("Time: \(now)")
+        lines.append("BundleID: \(bundleID)")
+        lines.append("Supabase URL: \(baseURL.absoluteString)")
+        lines.append("Expected OAuth callback: \(expectedOAuthCallback)")
+        lines.append("App deep link capture: \(redirectScheme)://\(redirectHost)")
+        lines.append("URL scheme registered: \(schemeOK ? "YES" : "NO")")
+        lines.append("isAuthenticated: \(isAuthenticated)")
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Public state
     @AppStorage("sb_access_token") private var storedAccessToken: String = ""
     @AppStorage("sb_refresh_token") private var storedRefreshToken: String = ""
@@ -46,6 +74,42 @@ final class SupabaseAuth: NSObject {
         if let name = claims["name"] as? String, !name.isEmpty { return name }
         if let email = claims["email"] as? String, !email.isEmpty { return email }
         return "Guest"
+    }
+
+    // MARK: - Email Magic Link sign-in (Supabase-managed; creates user in Auth)
+    /// Sends a Supabase-managed magic link to the given email.
+    /// When the user taps the link, your onOpenURL handler will receive the callback and store the session.
+    /// This will also create the user in the Supabase Auth "Users" table when they complete the flow.
+    func sendMagicLink(to email: String, createUser: Bool = true) async throws {
+        let redirect = "\(redirectScheme)://\(redirectHost)"
+        var comps = URLComponents(url: baseURL.appendingPathComponent("auth/v1/otp"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "redirect_to", value: redirect)
+        ]
+        guard let url = comps.url else { throw AuthError.configurationIssue("Could not build OTP URL for magic link") }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue("application/json", forHTTPHeaderField: "Accept")
+        req.addValue(anonKey, forHTTPHeaderField: "apikey")
+        req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = [
+            "email": email,
+            "create_user": createUser,
+            "type": "magiclink"
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else {
+            throw AuthError.configurationIssue("Magic link request failed with status \(http.statusCode). Check your Supabase URL/Anon Key and Auth settings.")
+        }
+        #if DEBUG
+        print("[SupabaseAuth] Magic link requested for \(email).")
+        #endif
+        // We don't set tokens here; session is established when the user taps the magic link and returns via onOpenURL
     }
 
     // MARK: - Start Apple sign-in (Native) -> exchange id_token with Supabase
@@ -141,16 +205,31 @@ final class SupabaseAuth: NSObject {
         comps.queryItems = items
         guard let authURL = comps.url else { throw AuthError.configurationIssue("Could not build authorize URL for Apple") }
 
-        #if DEBUG
-        print("[SupabaseAuth] Opening Apple auth URL: \(authURL.absoluteString)")
-        #endif
+        // Unconditional logs to aid debugging even in Release
+        NSLog("[SupabaseAuth] Opening Apple auth URL: %@", authURL.absoluteString)
+        NSLog("[SupabaseAuth] Expected redirect to be: %@/auth/v1/callback -> app will capture at %@://%@", baseURL.absoluteString, redirectScheme, redirectHost)
+
+        // Runtime check: ensure our custom URL scheme is registered in Info.plist
+        if !isURLSchemeRegistered(redirectScheme) {
+            let msg = "URL scheme '\(redirectScheme)' is NOT registered in Info.plist (CFBundleURLTypes). OAuth callback cannot return to the app."
+            NSLog("[SupabaseAuth][ERROR] %@", msg)
+            throw AuthError.configurationIssue(msg)
+        }
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             self.authSession = ASWebAuthenticationSession(url: authURL, callbackURLScheme: self.redirectScheme) { callbackURL, error in
+                if let callbackURL {
+                    NSLog("[SupabaseAuth] Apple callback URL received: %@", callbackURL.absoluteString)
+                }
+                if let error {
+                    NSLog("[SupabaseAuth] Apple OAuth session completed with error: %@", error.localizedDescription)
+                }
                 if let error = error as? ASWebAuthenticationSessionError {
                     switch error.code {
                     case .canceledLogin:
-                        return continuation.resume(throwing: AuthError.userCancelled)
+                        // Often shown when Apple or Supabase shows an error page and the user closes the sheet
+                        let msg = "Apple sign-in didn't complete. Verify Supabase Apple provider configuration and Services ID return URL includes your Supabase callback (/auth/v1/callback)."
+                        return continuation.resume(throwing: AuthError.configurationIssue(msg))
                     default:
                         return continuation.resume(throwing: AuthError.underlying(error))
                     }
@@ -170,7 +249,10 @@ final class SupabaseAuth: NSObject {
             if let preferEphemeral { self.authSession?.prefersEphemeralWebBrowserSession = preferEphemeral }
             else { self.authSession?.prefersEphemeralWebBrowserSession = false }
             self.authSession?.presentationContextProvider = self
-            _ = self.authSession?.start()
+            let started = self.authSession?.start() ?? false
+            if !started {
+                NSLog("[SupabaseAuth][ERROR] ASWebAuthenticationSession failed to start. Check presentation context and scene/window availability.")
+            }
         }
     }
 
@@ -232,6 +314,7 @@ final class SupabaseAuth: NSObject {
     // MARK: - Handle incoming URL (from Scene/SwiftUI onOpenURL)
     func handleOpenURL(_ url: URL) {
         if url.scheme == redirectScheme { // chatai://auth-callback#access_token=...
+            NSLog("[SupabaseAuth] handleOpenURL received: %@", url.absoluteString)
             try? storeSession(from: url)
         }
     }
@@ -269,9 +352,11 @@ final class SupabaseAuth: NSObject {
         storedRefreshToken = ""
         storedExpiresAt = exp
         storedEmail = email
-        #if DEBUG
-        print("[SupabaseAuth] Local email session issued for \(email), exp in \(Int(expiresIn))s")
-        #endif
+        NSLog("[SupabaseAuth] Local email session issued for %@, exp in %ds", email, Int(expiresIn))
+        // Notify the app that authentication state has changed (e.g., to refresh subscription status)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .authStateChanged, object: nil)
+        }
     }
 
     // MARK: - Private helpers
@@ -291,6 +376,10 @@ final class SupabaseAuth: NSObject {
         storedExpiresAt = Date().timeIntervalSince1970 + expiresIn
         if let claims = Self.decodeJWT(accessToken), let email = claims["email"] as? String, !email.isEmpty {
             storedEmail = email
+        }
+        // Post notification that auth state changed for URL-based flow as well (Apple/Google OAuth callbacks)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .authStateChanged, object: nil)
         }
     }
 
