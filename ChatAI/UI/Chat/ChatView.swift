@@ -352,10 +352,10 @@ struct ChatView: View {
                 vm.send()            // immediately send and let API process
                 autoSent = true
             }
-            if attachedData == nil, let d = initialAttachmentData {
-                attachedData = d
-                attachedMime = initialAttachmentMime
-            }
+            // Always take the initial attachment provided by the caller (HomeView)
+            // This fixes a bug where a previous attachment could persist if the view was reused
+            attachedData = initialAttachmentData
+            attachedMime = initialAttachmentMime
             focused = true
             // Sync provider selection with persisted choice
             let current = APIRegistry.shared.activeProvider().id

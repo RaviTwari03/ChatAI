@@ -532,7 +532,7 @@ private struct AccountActionCard: View {
                         GradientActionButton(title: "Open Camera")
                     }
                     .buttonStyle(.plain)
-                    Button(action: { showPhotosPicker = true }) {
+                    Button(action: { pickedItem = nil; showPhotosPicker = true }) {
                         GradientActionButton(title: "Edit Images")
                     }
                     .buttonStyle(.plain)
@@ -641,6 +641,7 @@ private struct AccountActionCard: View {
                             },
                             onPhotos: {
                                 showPlusMenu = false
+                                pickedItem = nil
                                 showPhotosPicker = true
                             },
                             onAudio: {
@@ -663,7 +664,12 @@ private struct AccountActionCard: View {
                             if let item, let data = try? await item.loadTransferable(type: Data.self) {
                                 attachmentData = data
                                 attachmentMime = "image/jpeg"
-                                goToChatWithAttachment = true
+                                // Clear the selected item to avoid stale re-use
+                                pickedItem = nil
+                                // Navigate after state settles
+                                DispatchQueue.main.async {
+                                    goToChatWithAttachment = true
+                                }
                             }
                         }
                     }
@@ -751,14 +757,16 @@ private struct AccountActionCard: View {
                 // Present camera when user taps Open Camera or Plus > Camera
                 .sheet(isPresented: $showCamera) {
                     ImagePickerRepresentable(sourceType: .camera) { image in
-                        // Convert to JPEG and route to Chat with attachment
+                        // Convert to JPEG and store attachment
                         if let img = image, let data = img.jpegData(compressionQuality: 0.9) {
                             attachmentData = data
                             attachmentMime = "image/jpeg"
-                            goToChatWithAttachment = true
                         }
-                        // Dismiss
+                        // Dismiss the camera first, then navigate on next run loop to avoid race
                         showCamera = false
+                        DispatchQueue.main.async {
+                            if attachmentData != nil { goToChatWithAttachment = true }
+                        }
                     }
                 }
                 .sheet(isPresented: $showLinkSheet) {
