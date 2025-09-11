@@ -103,5 +103,7 @@
 	<string>We need access to your Photos to let you pick images to chat about.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>We save your generated images to your Photos library when you tap Save.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>We need camera access to capture images you want to chat about.</string>
 </dict>
 </plist>

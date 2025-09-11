@@ -24,6 +24,181 @@ struct HomeView: View {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
     }
 
+// MARK: - Web Search Sheet with Change API
+private struct WebSearchSheet: View {
+    @Binding var text: String
+    @Binding var selectedProviderId: String
+    var onCommit: () -> Void
+    var onCancel: () -> Void
+    var onChangeProvider: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    private var providers: [APIProvider] { APIRegistry.shared.providers }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            // Header
+            HStack {
+                Button("Cancel") { onCancel(); dismiss() }
+                    .foregroundColor(.white.opacity(0.9))
+                Spacer()
+                Text("Web Search")
+                    .foregroundColor(.white)
+                    .font(.headline)
+                Spacer()
+                Button("Search") {
+                    onCommit()
+                    dismiss()
+                }
+                .foregroundColor(.white.opacity(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1.0))
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+
+            // Provider chip + Change API
+            HStack(spacing: 10) {
+                Menu {
+                    ForEach(providers) { p in
+                        Button(p.displayName) {
+                            selectedProviderId = p.id
+                            onChangeProvider(p.id)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                        Text(providerName)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.16)))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1))
+                }
+                Spacer()
+//                Button("Change API") {
+//                    // open same menu by program; fallback label covers UX
+//                }
+                .foregroundColor(.white.opacity(0.8))
+            }
+            .padding(.horizontal, 16)
+
+            // Input
+            TextField("What do you want to search?", text: $text, axis: .vertical)
+                .lineLimit(1...3)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+
+            Spacer(minLength: 10)
+        }
+        .background(
+            ZStack {
+                Color.black
+                RadialGradient(colors: [Color.purple.opacity(0.25), .clear], center: .topTrailing, startRadius: 40, endRadius: 420)
+                    .blur(radius: 20)
+                    .offset(x: 60, y: -80)
+                RadialGradient(colors: [Color.green.opacity(0.22), .clear], center: .topLeading, startRadius: 40, endRadius: 420)
+                    .blur(radius: 20)
+                    .offset(x: -60, y: -120)
+            }
+            .ignoresSafeArea()
+        )
+        .preferredColorScheme(.dark)
+    }
+
+    private var providerName: String {
+        providers.first(where: { $0.id == selectedProviderId })?.displayName ?? selectedProviderId
+    }
+}
+
+// MARK: - Plus Action Sheet (Custom bottom sheet for +)
+private struct PlusActionSheet: View {
+    var onClose: () -> Void
+    var onCreateImageVideo: () -> Void
+    var onPromptGallery: () -> Void
+    var onCamera: () -> Void
+    var onPhotos: () -> Void
+    var onAudio: () -> Void
+    var onFile: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Grabber + close
+            HStack {
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 44, height: 5)
+                    .padding(.top, 8)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 6)
+
+            // Rows
+            VStack(spacing: 0) {
+                sheetRow(title: "Create Image/Video", system: "sparkles.rectangle.stack", tint: Color.pink, action: onCreateImageVideo)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "Prompt Gallery", system: "square.grid.2x2", tint: Color.purple, action: onPromptGallery)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "Camera", system: "camera", tint: Color.green, action: onCamera)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "Photos", system: "photo.on.rectangle", tint: Color.blue, action: onPhotos)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "Audio", system: "waveform", tint: Color.mint, action: onAudio)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "File", system: "doc", tint: Color.yellow, action: onFile)
+            }
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.clear))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(
+            ZStack {
+                Color.black
+                LinearGradient(colors: [Color.black.opacity(0.0), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom)
+            }
+            .ignoresSafeArea()
+        )
+    }
+
+    @ViewBuilder
+    private func sheetRow(title: String, system: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(tint.opacity(0.18)).frame(width: 28, height: 28)
+                    Image(systemName: system)
+                        .foregroundColor(tint)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                Text(title)
+                    .foregroundColor(.white)
+                    .font(.subheadline)
+                Spacer()
+                Image(systemName: "chevron.right").foregroundColor(.white.opacity(0.35))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.06))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Provider dropdown card
 private struct ProviderMenuCard: View {
     let providers: [APIProvider]
@@ -446,13 +621,40 @@ private struct AccountActionCard: View {
                             .stroke(Color.white.opacity(0.08), lineWidth: 1)
                     )
                     .foregroundColor(.white)
-                    // Quick Actions for + button (no camera)
-                    .confirmationDialog("Quick actions", isPresented: $showPlusMenu, titleVisibility: .visible) {
-                        Button("Create Image Prompt…") { showImagePromptSheet = true }
-                        Button("Attach Photo from Library") { showPhotosPicker = true }
-                        Button("Attach File") { showDocPicker = true }
-                        Button("Start New Chat") { Task { await startNewChatFromMenu() } }
-                        Button("Cancel", role: .cancel) {}
+                    // Custom Plus bottom sheet
+                    .sheet(isPresented: $showPlusMenu) {
+                        PlusActionSheet(
+                            onClose: { showPlusMenu = false },
+                            onCreateImageVideo: {
+                                showPlusMenu = false
+                                // Reuse create image flow
+                                showImagePromptSheet = true
+                            },
+                            onPromptGallery: {
+                                showPlusMenu = false
+                                // For now, reuse image prompt sheet as a gallery entry point
+                                showImagePromptSheet = true
+                            },
+                            onCamera: {
+                                showPlusMenu = false
+                                showCamera = true
+                            },
+                            onPhotos: {
+                                showPlusMenu = false
+                                showPhotosPicker = true
+                            },
+                            onAudio: {
+                                showPlusMenu = false
+                                // Use document picker to attach audio; handled same as file for now
+                                showDocPicker = true
+                            },
+                            onFile: {
+                                showPlusMenu = false
+                                showDocPicker = true
+                            }
+                        )
+                        .presentationDetents([.fraction(0.42), .medium])
+                        .presentationDragIndicator(.hidden)
                     }
                     // Attachments
                     .photosPicker(isPresented: $showPhotosPicker, selection: $pickedItem, matching: .images)
@@ -546,6 +748,19 @@ private struct AccountActionCard: View {
                     )
                     .presentationDetents([.medium])
                 }
+                // Present camera when user taps Open Camera or Plus > Camera
+                .sheet(isPresented: $showCamera) {
+                    ImagePickerRepresentable(sourceType: .camera) { image in
+                        // Convert to JPEG and route to Chat with attachment
+                        if let img = image, let data = img.jpegData(compressionQuality: 0.9) {
+                            attachmentData = data
+                            attachmentMime = "image/jpeg"
+                            goToChatWithAttachment = true
+                        }
+                        // Dismiss
+                        showCamera = false
+                    }
+                }
                 .sheet(isPresented: $showLinkSheet) {
                     PromptInputSheet(
                         title: "Open Web Link",
@@ -565,11 +780,9 @@ private struct AccountActionCard: View {
                     .presentationDetents([.medium])
                 }
                 .sheet(isPresented: $showWebSearchSheet) {
-                    PromptInputSheet(
-                        title: "Web Search",
-                        placeholder: "What do you want to search?",
-                        actionTitle: "Search",
+                    WebSearchSheet(
                         text: $webSearchText,
+                        selectedProviderId: $selectedProviderId,
                         onCommit: {
                             let t = webSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !t.isEmpty else { return }
@@ -578,9 +791,13 @@ private struct AccountActionCard: View {
                             showWebSearchSheet = false
                             Task { await startChat() }
                         },
-                        onCancel: { webSearchText = "" }
+                        onCancel: { webSearchText = "" },
+                        onChangeProvider: { id in
+                            selectedProviderId = id
+                            APIRegistry.shared.setCurrentProvider(id: id)
+                        }
                     )
-                    .presentationDetents([.medium])
+                    .presentationDetents([.fraction(0.36), .medium])
                 }
             }
 
