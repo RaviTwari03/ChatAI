@@ -157,6 +157,8 @@ private struct AccountActionCard: View {
     @State private var chatToDelete: RecentChat? = nil
     // Account dialog
     @State private var showAccountDialog: Bool = false
+    // Settings screen navigation
+    @State private var showSettings: Bool = false
     var body: some View {
         ZStack {
             // Background
@@ -496,6 +498,10 @@ private struct AccountActionCard: View {
 
             // MARK: - 2/3 Left Slide-Over Panel
             if showSidePanel { sideOverlay }
+            // Hidden navigation to Settings
+            NavigationLink(isActive: $showSettings) {
+                SettingsView()
+            } label: { EmptyView() }
         }
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
@@ -720,9 +726,8 @@ private struct AccountActionCard: View {
                             AccountActionCard(
                                 email: SupabaseAuth.shared.lastEmail ?? SupabaseAuth.shared.displayName,
                                 onSettings: {
-                                    alertTitle = "Settings"
-                                    alertMessage = "Settings screen coming soon."
-                                    showAlert = true
+                                    showSettings = true
+                                    showAccountDialog = false
                                 },
                                 onUpgrade: { showPaywall = true },
                                 onLogout: {
@@ -741,6 +746,20 @@ private struct AccountActionCard: View {
                         }
                     }
                 }
+                // Tap anywhere to dismiss the account card (behind the card)
+                .background(
+                    Group {
+                        if showAccountDialog {
+                            Color.black.opacity(0.001) // invisible tap catcher behind overlays
+                                .ignoresSafeArea()
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                        showAccountDialog = false
+                                    }
+                                }
+                        }
+                    }
+                )
                 .frame(width: panelWidth, height: proxy.size.height)
                 .background(Color.black)
                 .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),
