@@ -45,6 +45,8 @@
 	<string>$(CLAUDE_API_KEY)</string>
 	<key>SMTP_EMAIL</key>
 	<string>$(SMTP_EMAIL)</string>
+	<key>SERPER_API_KEY</key>
+	<string>$(SERPER_API_KEY)</string>
 	<key>SMTP_PASSWORD</key>
 	<string>$(SMTP_PASSWORD)</string>
 	<key>SMTP_PORT</key>

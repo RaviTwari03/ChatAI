@@ -448,40 +448,112 @@ struct VoiceChatView: View {
 private struct VoicePickerView: View {
     @Binding var selectedVoice: VoiceOption
     @Binding var isPresented: Bool
-    
+    @State private var tempSelection: VoiceOption? = nil
+    @StateObject private var tts = TTSService()
+
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(VoiceOption.availableVoices) { voice in
-                    Button(action: {
-                        selectedVoice = voice
-                        isPresented = false
-                    }) {
-                        HStack {
-                            Text(voice.name)
-                                .foregroundColor(.primary)
-                            Spacer()
-                            if selectedVoice.id == voice.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
-                            }
+        NavigationStack {
+            VStack(spacing: 16) {
+                // Title
+                Text("Select Voice")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.top, 8)
+
+                // Rounded list of voices
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(VoiceOption.availableVoices) { voice in
+                            VoiceRow(voice: voice,
+                                     isSelected: (tempSelection?.id ?? selectedVoice.id) == voice.id,
+                                     onPreview: { preview(voice) },
+                                     onSelect: { tempSelection = voice; preview(voice) })
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
                 }
-            }
-            .navigationTitle("Select Voice")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        isPresented = false
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 12) {
+                    Button(action: { tts.stop(); isPresented = false }) {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+                    }
+                    Button(action: applySelection) {
+                        Text("Done")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+                            .foregroundColor(.black)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
             }
+            .background(
+                ZStack {
+                    Color.black
+                    RadialGradient(colors: [Color.purple.opacity(0.3), .clear], center: .topTrailing, startRadius: 40, endRadius: 420)
+                        .blur(radius: 20)
+                        .offset(x: 60, y: -80)
+                    RadialGradient(colors: [Color.green.opacity(0.25), .clear], center: .topLeading, startRadius: 40, endRadius: 420)
+                        .blur(radius: 20)
+                        .offset(x: -60, y: -120)
+                }
+                .ignoresSafeArea()
+            )
+            .toolbar(.hidden, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
+        .onAppear { tempSelection = selectedVoice }
+    }
+
+    private func preview(_ voice: VoiceOption) {
+        tts.selectedVoice = voice
+        tts.stop()
+        tts.speak("Hi, I am \(voice.name). This is how I sound.")
+    }
+
+    private func applySelection() {
+        if let temp = tempSelection { selectedVoice = temp }
+        tts.stop()
+        isPresented = false
+    }
+
+    private struct VoiceRow: View {
+        let voice: VoiceOption
+        let isSelected: Bool
+        let onPreview: () -> Void
+        let onSelect: () -> Void
+
+        var body: some View {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(voice.name)
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                Button(action: onPreview) {
+                    Image(systemName: "play.circle.fill")
+                        .foregroundColor(.white)
+                        .font(.title3)
+                }
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.blue)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .contentShape(Rectangle())
+            .onTapGesture { onSelect() }
+        }
     }
 }
 

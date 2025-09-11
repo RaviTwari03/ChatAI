@@ -329,7 +329,7 @@ private struct AccountActionCard: View {
                     NavigationLink {
                         VoiceChatView()
                     } label: {
-                        FeatureCard(title: "Voice", subtitle: "Assist", icon: "waveform", accent: .orange)
+                        FeatureCard(title: "Voice", subtitle: "Chat", icon: "waveform", accent: .orange)
                     }
                     .buttonStyle(.plain)
                 }
