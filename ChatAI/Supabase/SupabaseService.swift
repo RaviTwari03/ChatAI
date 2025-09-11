@@ -67,6 +67,73 @@ struct SupabaseService {
         }
     }
 
+    /// Deletes the user_images row(s) by URL for the current user and removes the storage object.
+    func deleteUserImageByPublicURL(_ publicURLString: String) async -> Result<Void, SupabaseError> {
+        // 1) Delete DB rows for current user and URL
+        let dbRes = await deleteUserImageRow(url: publicURLString)
+        switch dbRes {
+        case .failure(let err):
+            // Proceed to storage deletion even if row deletion fails, but report the error at the end if storage succeeds
+            let storageRes = await deleteStorageObjectByPublicURL(publicURLString)
+            if case .failure(let sErr) = storageRes { return .failure(sErr) }
+            return .failure(err)
+        case .success:
+            // 2) Remove storage object
+            let storageRes = await deleteStorageObjectByPublicURL(publicURLString)
+            if case .failure(let sErr) = storageRes { return .failure(sErr) }
+            return .success(())
+        }
+    }
+
+    private func deleteUserImageRow(url: String) async -> Result<Void, SupabaseError> {
+        do {
+            var comps = URLComponents(url: restBase.appendingPathComponent("user_images"), resolvingAgainstBaseURL: false)!
+            comps.queryItems = [
+                URLQueryItem(name: "url", value: "eq.\(url)")
+            ]
+            guard let endpoint = comps.url else { return .failure(.invalidURL) }
+            let req = authedRequest(url: endpoint, method: "DELETE", prefer: "return=minimal")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            return .success(())
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    private func deleteStorageObjectByPublicURL(_ publicURLString: String) async -> Result<Void, SupabaseError> {
+        // Expected form: {base}/storage/v1/object/public/generated/{objectPath}
+        guard let base = URL(string: publicURLString) else { return .failure(.invalidURL) }
+        // Find the subpath after "/storage/v1/object/public/generated/"
+        let marker = "/storage/v1/object/public/generated/"
+        guard let range = publicURLString.range(of: marker) else { return .failure(.invalidURL) }
+        let objectPath = String(publicURLString[range.upperBound...])
+        let deleteURL = baseURL.appendingPathComponent("/storage/v1/object/generated/\(objectPath)")
+        var req = URLRequest(url: deleteURL)
+        req.httpMethod = "DELETE"
+        req.addValue(anonKey, forHTTPHeaderField: "apikey")
+        if let token = SupabaseAuth.shared.accessToken, !SupabaseAuth.shared.isLocalSession {
+            req.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else {
+            req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            return .success(())
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
     // MARK: - Generated Images (Storage + Table)
 
     /// Upload image data to Supabase Storage bucket 'generated' and return its public URL.

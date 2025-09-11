@@ -488,28 +488,48 @@ private struct VoicePickerView: View {
 // MARK: - Animations
 /// Moving particle orb for listening state
 private struct ParticleOrb: View {
-    @State private var t: CGFloat = 0
-    private let particleCount = 120
+    @State private var phase: CGFloat = 0
+    private let particleCount = 90
     var body: some View {
         TimelineView(.animation) { timeline in
             Canvas { ctx, size in
                 let minSide = min(size.width, size.height)
-                let radius = minSide * 0.42
+                let baseR = minSide * 0.40
                 let center = CGPoint(x: size.width/2, y: size.height/2)
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                for i in 0..<particleCount {
-                    let angle = (Double(i) / Double(particleCount)) * 2 * .pi + sin(time * 0.6 + Double(i)) * 0.08
-                    let rJitter = radius + sin(time * 1.2 + Double(i) * 0.5) * 6.0
-                    let x = center.x + CGFloat(cos(angle)) * CGFloat(rJitter)
-                    let y = center.y + CGFloat(sin(angle)) * CGFloat(rJitter)
-                    let rect = CGRect(x: x, y: y, width: 2, height: 2)
-                    ctx.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.9)))
+                let t = timeline.date.timeIntervalSinceReferenceDate
+
+                // Outer subtle ring
+                let ring = Path { p in
+                    p.addEllipse(in: CGRect(x: center.x - baseR, y: center.y - baseR, width: baseR * 2, height: baseR * 2))
                 }
+                ctx.stroke(ring, with: .color(.white.opacity(0.12)), lineWidth: 1)
+
+                // Breathing radius
+                let breathe = CGFloat(sin(t * 1.0)) * (minSide * 0.01)
+                let radius = baseR - 2 + breathe
+
+                // Draw moving particles around the ring
+                for i in 0..<particleCount {
+                    let baseAngle = (Double(i) / Double(particleCount)) * (2 * .pi)
+                    // Small angular jitter and rotation drift
+                    let drift = sin(t * 0.5 + Double(i) * 0.37) * 0.15
+                    let angle = baseAngle + drift
+                    // Radial micro jitter
+                    let rJitter = radius + CGFloat(sin(t * 1.4 + Double(i) * 0.61)) * 3.0
+                    let x = center.x + CGFloat(cos(angle)) * rJitter
+                    let y = center.y + CGFloat(sin(angle)) * rJitter
+                    // Vary dot size slightly
+                    let sz = 1.6 + CGFloat((sin(Double(i)) + 1) * 0.3)
+                    let dotRect = CGRect(x: x - sz/2, y: y - sz/2, width: sz, height: sz)
+                    ctx.fill(Path(ellipseIn: dotRect), with: .color(.white.opacity(0.92)))
+                }
+
+                // Soft inner glow
+                let glowR = baseR * 0.92
+                let glowRect = CGRect(x: center.x - glowR, y: center.y - glowR, width: glowR * 2, height: glowR * 2)
+                ctx.stroke(Path(ellipseIn: glowRect), with: .color(.white.opacity(0.06)), lineWidth: 10)
             }
         }
-        .background(
-            Circle().stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
         .padding(12)
     }
 }

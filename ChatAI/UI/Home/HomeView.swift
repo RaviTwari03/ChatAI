@@ -24,6 +24,100 @@ struct HomeView: View {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
     }
 
+// MARK: - Provider dropdown card
+private struct ProviderMenuCard: View {
+    let providers: [APIProvider]
+    let selectedId: String
+    var onSelect: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(providers) { p in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        providerIcon(for: p.id)
+                            .foregroundColor(.white)
+                        Text(p.displayName)
+                            .foregroundColor(.white)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 8)
+                        HStack(spacing: 6) {
+                            if badgeNew(for: p.id) {
+                                Pill(text: "New", color: .blue)
+                            }
+                            if badgeBest(for: p.id) {
+                                Pill(text: "Best", color: .purple)
+                            }
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { onSelect(p.id) }
+                    Text(subtitle(for: p.id))
+                        .foregroundColor(.white.opacity(0.85))
+                        .font(.caption)
+                        .padding(.leading, 26)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                if p.id != providers.last?.id {
+                    Divider().background(Color.white.opacity(0.12))
+                }
+            }
+        }
+        .frame(maxWidth: 360)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(red: 0.12, green: 0.12, blue: 0.12).opacity(0.98))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.5), radius: 30, x: 0, y: 10)
+    }
+
+    private func providerIcon(for id: String) -> some View {
+        let symbol: String
+        switch id.lowercased() {
+        case let s where s.contains("grok"): symbol = "bolt.circle"
+        case let s where s.contains("gemini"): symbol = "sparkles"
+        default: symbol = "globe"
+        }
+        return Image(systemName: symbol)
+    }
+
+    private func subtitle(for id: String) -> String {
+        let s = id.lowercased()
+        if s.contains("chatgpt5") || s.contains("gpt-4o") { return "Most powerful AI model" }
+        if s.contains("mini") { return "Fast for everyday tasks" }
+        if s.contains("grok") { return "xAI's most powerful model" }
+        if s.contains("gemini") { return "Google's best model" }
+        return "Fast reasoning model"
+    }
+
+    private func badgeNew(for id: String) -> Bool {
+        let s = id.lowercased()
+        return s.contains("grok") || s.contains("gpt-4o") || s.contains("chatgpt5")
+    }
+    private func badgeBest(for id: String) -> Bool {
+        let s = id.lowercased()
+        return s.contains("chatgpt") || s.contains("gpt")
+    }
+
+    private struct Pill: View {
+        let text: String
+        let color: Color
+        var body: some View {
+            Text(text)
+                .font(.caption2.weight(.bold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(color.opacity(0.9)))
+                .foregroundColor(.white)
+        }
+    }
+}
+
 // Floating account action card matching the screenshot
 private struct AccountActionCard: View {
     var email: String
@@ -159,6 +253,8 @@ private struct AccountActionCard: View {
     @State private var showAccountDialog: Bool = false
     // Settings screen navigation
     @State private var showSettings: Bool = false
+    // Provider dropdown
+    @State private var showProviderMenu: Bool = false
     var body: some View {
         ZStack {
             // Background
@@ -176,23 +272,19 @@ private struct AccountActionCard: View {
 
                     Spacer(minLength: 0)
 
-                    // Center chip: dropdown to switch APIs, single-line title
-                    Menu {
-                        ForEach(providers) { provider in
-                            Button(provider.displayName) { selectedProviderId = provider.id }
-                        }
-                    } label: {
+                    // Center chip: custom dropdown to switch APIs
+                    Button(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu.toggle() } }) {
                         CapsuleChip {
                             HStack(spacing: 6) {
                                 Text(selectedDisplayName)
                                     .font(.subheadline)
                                     .lineLimit(1)
-                                    .truncationMode(.tail)
                                 Image(systemName: "waveform")
                                     .font(.caption2)
                             }
                         }
                     }
+                    .buttonStyle(.plain)
 
                     Spacer(minLength: 0)
 
@@ -428,13 +520,9 @@ private struct AccountActionCard: View {
                         }
                     }
 
-                    // Hidden navigation to Library; when picking an image, attach to new chat
+                    // Hidden navigation to Library (standalone; no redirect to chat on tap)
                     NavigationLink(isActive: $showLibrary) {
-                        CloudLibraryView { data, mime in
-                            attachmentData = data
-                            attachmentMime = mime
-                            goToChatWithAttachment = true
-                        }
+                        CloudLibraryView()
                     } label: { EmptyView() }
                 }
                 .padding(.horizontal, 14)
@@ -506,6 +594,29 @@ private struct AccountActionCard: View {
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
         .animation(.spring(response: 0.30, dampingFraction: 0.86, blendDuration: 0.2), value: showSidePanel)
+        // Provider menu overlay
+        .overlay(alignment: .top) {
+            if showProviderMenu {
+                ZStack(alignment: .top) {
+                    // tap-catcher
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea()
+                        .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false } }
+                    // Card
+                    ProviderMenuCard(
+                        providers: providers,
+                        selectedId: selectedProviderId,
+                        onSelect: { id in
+                            selectedProviderId = id
+                            APIRegistry.shared.setCurrentProvider(id: id)
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false }
+                        }
+                    )
+                    .padding(.top, 64)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
         // Dismiss keyboard when tapping outside
         .contentShape(Rectangle())
         .onTapGesture { isComposerFocused = false }
