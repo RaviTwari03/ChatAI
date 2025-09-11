@@ -52,6 +52,16 @@ class APIManager {
     var claudeAPIKey: String? {
         return getAPIKey(for: "CLAUDE_API_KEY")
     }
+
+    /// Get Stability API Key from secure configuration
+    var stabilityAPIKey: String? {
+        return getAPIKey(for: "STABILITY_API_KEY")
+    }
+
+    /// Get Cloudinary credentials from secure configuration
+    var cloudinaryCloudName: String? { bundle.infoDictionary?["CLOUDINARY_CLOUD_NAME"] as? String }
+    var cloudinaryAPIKey: String? { bundle.infoDictionary?["CLOUDINARY_API_KEY"] as? String }
+    var cloudinaryAPISecret: String? { bundle.infoDictionary?["CLOUDINARY_API_SECRET"] as? String }
     
     // MARK: - Private Methods
     
@@ -82,6 +92,7 @@ class APIManager {
         let pikaValid = pikaAPIKey != nil
         let deepseekValid = deepseekAPIKey != nil
         let claudeValid = claudeAPIKey != nil
+        let stabilityValid = stabilityAPIKey != nil
         
         if !openAIValid {
             print("❌ OpenAI API key is missing or invalid")
@@ -107,7 +118,11 @@ class APIManager {
             print("❌ Claude API key is missing or invalid")
         }
         
-        return openAIValid && xaiValid && geminiValid && pikaValid && deepseekValid && claudeValid
+        if !stabilityValid {
+            print("❌ Stability API key is missing or invalid (needed for image edit/background removal)")
+        }
+        
+        return openAIValid && xaiValid && geminiValid && pikaValid && deepseekValid && claudeValid && stabilityValid
     }
     
     /// Get configuration status for debugging
@@ -119,6 +134,7 @@ class APIManager {
             "pika_configured": pikaAPIKey != nil,
             "deepseek_configured": deepseekAPIKey != nil,
             "claude_configured": claudeAPIKey != nil,
+            "stability_configured": stabilityAPIKey != nil,
             "bundle_identifier": bundle.bundleIdentifier ?? "unknown",
             "info_plist_keys": bundle.infoDictionary?.keys.sorted() ?? []
         ]
@@ -233,6 +249,20 @@ extension APIManager {
         let looksValid = (key.hasPrefix("sk-") || key.hasPrefix("sk-ant-")) && key.count > 20
         guard looksValid else {
             throw APIKeyError.invalidKey("CLAUDE_API_KEY")
+        }
+        return key
+    }
+
+    /// Get validated Stability API key or throw error
+    /// - Throws: APIKeyError if key is missing or invalid
+    /// - Returns: Valid Stability API key
+    func getValidatedStabilityKey() throws -> String {
+        guard let key = stabilityAPIKey else {
+            throw APIKeyError.missingKey("STABILITY_API_KEY")
+        }
+        // Stability keys are opaque; basic sanity check for length
+        guard key.count >= 20 else {
+            throw APIKeyError.invalidKey("STABILITY_API_KEY")
         }
         return key
     }

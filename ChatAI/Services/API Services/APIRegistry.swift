@@ -23,7 +23,8 @@ final class APIRegistry {
         APIProvider(id: "grokai", displayName: "GROK AI"),
         APIProvider(id: "gemini", displayName: "Gemini"),
         APIProvider(id: "deepseek", displayName: "DeepSeek"),
-        APIProvider(id: "claude", displayName: "Claude")
+        APIProvider(id: "claude", displayName: "Claude"),
+        APIProvider(id: "stability", displayName: "Stability")
     ]
 
     private let defaults = UserDefaults.standard
@@ -129,6 +130,41 @@ final class APIRegistry {
             throw NSError(domain: "APIRegistry.Vision", code: -200, userInfo: [NSLocalizedDescriptionKey: "Vision Q&A not supported for GROK AI yet. Switch to OpenAI in settings."])
         default:
             return try await OpenAIService.shared.analyzeImage(question: question, imageData: imageData, mimeType: mimeType)
+        }
+    }
+
+    // MARK: - Image Editing Routers
+    func editImage(image: Data, mask: Data?, prompt: String, size: String = "1024x1024") async throws -> Data {
+        let selected = activeProvider()
+        print("✏️ Image edit via provider: \(selected.displayName) [\(selected.id)]")
+        switch selected.id {
+        case "stability":
+            return try await StabilityImageEditService.shared.edit(image: image, mask: mask, prompt: prompt, size: size)
+        default:
+            return try await OpenAIImageEditService.shared.edit(image: image, mask: mask, prompt: prompt, size: size)
+        }
+    }
+
+    func removeBackground(image: Data) async throws -> Data {
+        let selected = activeProvider()
+        print("🧼 Background removal via: \(selected.displayName) [\(selected.id)]")
+        switch selected.id {
+        case "stability":
+            return try await StabilityImageEditService.shared.removeBackground(image: image)
+        default:
+            // OpenAI does not have a dedicated background removal; simulate with full-image edit and prompt
+            return try await OpenAIImageEditService.shared.removeBackground(image: image)
+        }
+    }
+
+    func upscale(image: Data, scale: Int = 2) async throws -> Data {
+        let selected = activeProvider()
+        print("🔍 Upscale via: \(selected.displayName) [\(selected.id)]")
+        switch selected.id {
+        case "stability":
+            return try await StabilityImageEditService.shared.upscale(image: image, scale: scale)
+        default:
+            return try await OpenAIImageEditService.shared.upscale(image: image, scale: scale)
         }
     }
 }

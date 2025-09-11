@@ -24,6 +24,84 @@ struct HomeView: View {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
     }
 
+// Floating account action card matching the screenshot
+private struct AccountActionCard: View {
+    var email: String
+    var onSettings: () -> Void
+    var onUpgrade: () -> Void
+    var onLogout: () -> Void
+    var onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Email row (disabled)
+            HStack(spacing: 10) {
+                Image(systemName: "person.circle")
+                Text(email)
+                Spacer()
+            }
+            .foregroundColor(.white.opacity(0.9))
+            .padding(12)
+
+            // Settings prominent pill
+            Button(action: onSettings) {
+                HStack(spacing: 10) {
+                    Image(systemName: "gearshape")
+                    Text("Settings")
+                        .fontWeight(.semibold)
+                    Spacer()
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.15)))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.top, 4)
+
+            Divider().background(Color.white.opacity(0.2)).padding(.vertical, 8)
+
+            // Upgrade
+            Button(action: onUpgrade) {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.up.circle")
+                    Text("Upgrade to go")
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.white)
+
+            Divider().background(Color.white.opacity(0.2))
+
+            // Logout
+            Button(role: .destructive, action: onLogout) {
+                HStack(spacing: 10) {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    Text("Log out")
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+            .tint(.red)
+            .foregroundColor(.red)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(red: 0.12, green: 0.12, blue: 0.12).opacity(0.95))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .onTapGesture { /* absorb taps */ }
+    }
+}
+
     private func startNewChatFromMenu() async {
         await MainActor.run {
             homeDraft = ""
@@ -77,6 +155,8 @@ struct HomeView: View {
     // Delete confirmation state
     @State private var showDeleteConfirm: Bool = false
     @State private var chatToDelete: RecentChat? = nil
+    // Account dialog
+    @State private var showAccountDialog: Bool = false
     var body: some View {
         ZStack {
             // Background
@@ -149,7 +229,7 @@ struct HomeView: View {
 
                     // Web Links -> show URL input sheet, then navigate to Chat with prefilled text
                     Button(action: { showLinkSheet = true }) {
-                        FeatureCard(title: "Web Links", subtitle: "Share", icon: "link", accent: .cyan)
+                        FeatureCard(title: "Web", subtitle: "Links", icon: "link", accent: .cyan)
                     }
                     .buttonStyle(.plain)
                     NavigationLink {
@@ -173,141 +253,105 @@ struct HomeView: View {
                 }
                 .padding(.bottom, 24)
 
-                // Bottom quick actions
+                // Bottom quick actions (gradient cards)
                 HStack(spacing: 12) {
                     Button(action: { showImagePromptSheet = true }) {
-                        RoundedQuickAction(title: "Create Images")
+                        GradientActionButton(title: "Create Images")
                     }
                     .buttonStyle(.plain)
                     Button(action: { showCamera = true }) {
-                        RoundedQuickAction(title: "Open Camera")
+                        GradientActionButton(title: "Open Camera")
                     }
                     .buttonStyle(.plain)
                     Button(action: { showPhotosPicker = true }) {
-                        RoundedQuickAction(title: "Edit Images")
+                        GradientActionButton(title: "Edit Images")
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
 
-                // Composer bar (editable)
+                // Composer bar redesigned (single rounded container with actions)
                 VStack(spacing: 10) {
-                    TextField("Message ChatNow...", text: $homeDraft, axis: .vertical)
-                        .lineLimit(1...4)
-                        .foregroundColor(.white)
-                        .submitLabel(.send)
-                        .focused($isComposerFocused)
-                        .onSubmit {
-                            let text = homeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !text.isEmpty {
-                                isComposerFocused = false
-                                Task { await startChat() }
-                            }
-                        }
-                        .padding(.leading, 14)
-                        .padding(.trailing, 44) // room for mic/send button
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.12))
-                        )
-                        .overlay(alignment: .trailing) {
-                            let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            Button(action: {
-                                if canSend {
+                    // Content-hugging container
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Message field
+                        TextField("Message ChatNow...", text: $homeDraft, axis: .vertical)
+                            .lineLimit(1...4)
+                            .foregroundColor(.white)
+                            .submitLabel(.send)
+                            .focused($isComposerFocused)
+                            .onSubmit {
+                                let text = homeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !text.isEmpty {
                                     isComposerFocused = false
                                     Task { await startChat() }
-                                } else {
-                                    // Toggle voice input
-                                    if speech.isRecording {
-                                        speech.stop()
+                                }
+                            }
+                        // Bottom action row (left pills + right icons)
+                        HStack(spacing: 12) {
+                            HStack(spacing: 10) {
+                                Button { showPlusMenu = true } label: {
+                                    CapsuleSmall { Image(systemName: "plus") }
+                                }
+                                .buttonStyle(.plain)
+                                Button(action: { showWebSearchSheet = true }) {
+                                    CapsuleSmall { Text("Web Search").font(.caption) }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            Spacer()
+                            HStack(spacing: 18) {
+                                // Scanner
+                                Button {
+                                    if #available(iOS 16.0, *) {
+                                        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                                            showScanner = true
+                                        } else {
+                                            alertTitle = "Scanner Unavailable"
+                                            alertMessage = "Barcode scanner requires iOS 16+ and a supported device."
+                                            showAlert = true
+                                        }
                                     } else {
-                                        try? speech.start()
+                                        alertTitle = "Requires iOS 16+"
+                                        alertMessage = "Update iOS to use barcode scanning."
+                                        showAlert = true
                                     }
-                                }
-                            }) {
-                                Image(systemName: canSend ? "paperplane.fill" : (speech.isRecording ? "stop.circle.fill" : "mic.fill"))
-                                    .foregroundColor(.white)
-                                    .padding(.trailing, 10)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                    HStack(spacing: 18) {
-                        Button { showPlusMenu = true } label: {
-                            CapsuleSmall { Image(systemName: "plus") }
-                        }
-                        .buttonStyle(.plain)
-                        Button(action: { showWebSearchSheet = true }) {
-                            CapsuleSmall { Text("Web Search").font(.caption) }
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                        Menu {
-                            Button {
-                                showPhotosPicker = true
-                            } label: {
-                                Label("Attach Photo", systemImage: "photo")
-                            }
-                            Button {
-                                showDocPicker = true
-                            } label: {
-                                Label("Attach File", systemImage: "doc")
-                            }
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .photosPicker(isPresented: $showPhotosPicker, selection: $pickedItem, matching: .images)
-                        .onChange(of: pickedItem) { item in
-                            Task {
-                                if let item, let data = try? await item.loadTransferable(type: Data.self) {
-                                    attachmentData = data
-                                    attachmentMime = "image/jpeg"
-                                    goToChatWithAttachment = true
-                                }
-                            }
-                        }
-                        .sheet(isPresented: $showDocPicker) {
-                            DocumentPickerRepresentable { url in
-                                guard let url else { return }
-                                do {
-                                    let data = try Data(contentsOf: url)
-                                    attachmentData = data
-                                    if let type = UTType(filenameExtension: url.pathExtension) {
-                                        attachmentMime = type.preferredMIMEType ?? "application/octet-stream"
+                                } label: { Image(systemName: "viewfinder") }
+                                .font(.system(size: 16, weight: .semibold))
+                                // Mic or Send toggle
+                                Button(action: {
+                                    let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    if canSend {
+                                        isComposerFocused = false
+                                        Task { await startChat() }
                                     } else {
-                                        attachmentMime = "application/octet-stream"
+                                        if speech.isRecording { speech.stop() } else { try? speech.start() }
                                     }
-                                    goToChatWithAttachment = true
-                                } catch { }
-                            }
-                        }
-                        // Square button (viewfinder) -> quick attach photo from library
-                        Button {
-                            if #available(iOS 16.0, *) {
-                                if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
-                                    showScanner = true
-                                } else {
-                                    alertTitle = "Scanner Unavailable"
-                                    alertMessage = "Barcode scanner requires iOS 16+ and a supported device."
-                                    showAlert = true
+                                }) {
+                                    let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    Image(systemName: canSend ? "paperplane.fill" : (speech.isRecording ? "stop.circle.fill" : "mic.fill"))
                                 }
-                            } else {
-                                alertTitle = "Requires iOS 16+"
-                                alertMessage = "Update iOS to use barcode scanning."
-                                showAlert = true
+                                .buttonStyle(.plain)
+                                .font(.system(size: 16, weight: .semibold))
+                                // Voice chat
+                                Button { showVoiceChat = true } label: { Image(systemName: "waveform") }
+                                .font(.system(size: 16, weight: .semibold))
                             }
-                        } label: { Image(systemName: "viewfinder") }
-                        Button {
-                            showVoiceChat = true
-                        } label: {
-                            Image(systemName: "waveform")
                         }
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.white.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
                     .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-
                     // Quick Actions for + button (no camera)
                     .confirmationDialog("Quick actions", isPresented: $showPlusMenu, titleVisibility: .visible) {
                         Button("Create Image Prompt…") { showImagePromptSheet = true }
@@ -315,6 +359,32 @@ struct HomeView: View {
                         Button("Attach File") { showDocPicker = true }
                         Button("Start New Chat") { Task { await startNewChatFromMenu() } }
                         Button("Cancel", role: .cancel) {}
+                    }
+                    // Attachments
+                    .photosPicker(isPresented: $showPhotosPicker, selection: $pickedItem, matching: .images)
+                    .onChange(of: pickedItem) { item in
+                        Task {
+                            if let item, let data = try? await item.loadTransferable(type: Data.self) {
+                                attachmentData = data
+                                attachmentMime = "image/jpeg"
+                                goToChatWithAttachment = true
+                            }
+                        }
+                    }
+                    .sheet(isPresented: $showDocPicker) {
+                        DocumentPickerRepresentable { url in
+                            guard let url else { return }
+                            do {
+                                let data = try Data(contentsOf: url)
+                                attachmentData = data
+                                if let type = UTType(filenameExtension: url.pathExtension) {
+                                    attachmentMime = type.preferredMIMEType ?? "application/octet-stream"
+                                } else {
+                                    attachmentMime = "application/octet-stream"
+                                }
+                                goToChatWithAttachment = true
+                            } catch { }
+                        }
                     }
 
                     // Hidden navigation when user hits send
@@ -345,14 +415,11 @@ struct HomeView: View {
                         if #available(iOS 16.0, *) {
                             BarcodeScannerContainer(
                                 onPayload: { payload in
-                                    // Use the scanned barcode to start a chat
                                     homeDraft = "barcode: \(payload)"
                                     showScanner = false
                                     Task { await startChat() }
                                 },
-                                onCancel: {
-                                    showScanner = false
-                                }
+                                onCancel: { showScanner = false }
                             )
                         } else {
                             EmptyView()
@@ -532,28 +599,7 @@ struct HomeView: View {
                     // Scrollable content
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
-                            // User header
-                            HStack(spacing: 10) {
-                                let name = SupabaseAuth.shared.displayName
-                                ZStack {
-                                    Circle().fill(Color.purple.opacity(0.6))
-                                    Text(String(name.prefix(1)).uppercased())
-                                        .font(.subheadline).bold()
-                                        .foregroundColor(.white)
-                                }
-                                .frame(width: 28, height: 28)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(name)
-                                        .foregroundColor(.white)
-                                        .font(.subheadline)
-                                        .lineLimit(1)
-                                    Text("Signed in")
-                                        .foregroundColor(.white.opacity(0.6))
-                                        .font(.caption2)
-                                }
-                                Spacer()
-                            }
-                            .padding(.bottom, 4)
+                            // (User header moved to fixed footer)
 
                             // Search
                             HStack(spacing: 8) {
@@ -577,6 +623,15 @@ struct HomeView: View {
                                     Task { await startNewChatFromMenu() }
                                 } label: {
                                     menuRow(icon: "square.and.pencil", title: "New chat")
+                                }
+                                .buttonStyle(.plain)
+
+                                // Library
+                                Button {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) { showSidePanel = false }
+                                    showLibrary = true
+                                } label: {
+                                    menuRow(icon: "photo.on.rectangle", title: "Library")
                                 }
                                 .buttonStyle(.plain)
 
@@ -638,42 +693,52 @@ struct HomeView: View {
 
                     // Fixed footer pinned at bottom
                     VStack(alignment: .leading, spacing: 12) {
-                        Button {
-                            // Navigate to Paywall
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.22)) {
-                                showSidePanel = false
+                        // Fixed user row at bottom
+                        HStack(spacing: 10) {
+                            let name = SupabaseAuth.shared.displayName
+                            ZStack {
+                                Circle().fill(Color.purple.opacity(0.8))
+                                Text(String(name.prefix(1)).uppercased())
+                                    .font(.subheadline).bold()
+                                    .foregroundColor(.white)
                             }
-                            // Trigger navigation to paywall
-                            showPaywall = true
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "star.circle.fill").foregroundColor(.yellow)
-                                Text("Upgrade to Pro")
-                                Spacer()
-                            }
-                            .foregroundColor(.white)
-                            .font(.subheadline)
+                            .frame(width: 28, height: 28)
+                            Text(name)
+                                .foregroundColor(.white)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Spacer()
                         }
-                        .buttonStyle(.plain)
-
-                        Button(role: .destructive) {
-                            SupabaseAuth.shared.signOut()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                                showSidePanel = false
-                            }
-                            // Pop back to LoginView
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                Text("Sign out")
-                                Spacer()
-                            }
-                        }
-                        .tint(.red)
-                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .onTapGesture { withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { showAccountDialog = true } }
                         .padding(16)
                         .background(Color.black.opacity(0.9))
+                    }
+                    // Floating account card like screenshot
+                    .overlay(alignment: .bottomLeading) {
+                        if showAccountDialog {
+                            AccountActionCard(
+                                email: SupabaseAuth.shared.lastEmail ?? SupabaseAuth.shared.displayName,
+                                onSettings: {
+                                    alertTitle = "Settings"
+                                    alertMessage = "Settings screen coming soon."
+                                    showAlert = true
+                                },
+                                onUpgrade: { showPaywall = true },
+                                onLogout: {
+                                    SupabaseAuth.shared.signOut()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                        showSidePanel = false
+                                        showAccountDialog = false
+                                    }
+                                    dismiss()
+                                },
+                                onDismiss: { withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { showAccountDialog = false } }
+                            )
+                            .padding(.leading, 12)
+                            .padding(.bottom, 72)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
                 }
                 .frame(width: panelWidth, height: proxy.size.height)
@@ -828,15 +893,35 @@ private struct FeatureCard: View {
     }
 }
 
-private struct RoundedQuickAction: View {
+private struct GradientActionButton: View {
     var title: String
     var body: some View {
-        Text(title)
-            .foregroundColor(.white)
-            .font(.caption)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.12)))
+        ZStack {
+            // Vibrant gradient similar to iOS wallpaper swirls
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.93, green: 0.18, blue: 0.23), // red
+                            Color(red: 0.61, green: 0.20, blue: 0.79), // purple
+                            Color(red: 0.12, green: 0.38, blue: 0.97)  // blue
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 6)
+            Text(title)
+                .foregroundColor(.white)
+                .font(.system(size: 14, weight: .semibold))
+                .shadow(color: Color.black.opacity(0.35), radius: 2, x: 0, y: 1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
     }
 }
 
