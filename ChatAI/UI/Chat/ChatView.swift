@@ -98,6 +98,11 @@ final class ChatViewModel: ObservableObject {
                     do {
                         let data = try await APIRegistry.shared.generateImage(prompt: clean, size: "1024x1024")
                         messages.append(ChatMessage(text: "[Image generated] \(clean)", isUser: false, imageData: data))
+                        // Upload to Supabase in background and record URL
+                        Task {
+                            let up = await SupabaseService().uploadGeneratedImage(data: data)
+                            if case .success(let url) = up { let _ = await SupabaseService().insertUserImage(url: url) }
+                        }
                     } catch {
                         messages.append(ChatMessage(text: "Image generation failed: \(error.localizedDescription)", isUser: false))
                     }

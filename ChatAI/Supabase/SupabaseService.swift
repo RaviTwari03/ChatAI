@@ -67,6 +67,88 @@ struct SupabaseService {
         }
     }
 
+    // MARK: - Generated Images (Storage + Table)
+
+    /// Upload image data to Supabase Storage bucket 'generated' and return its public URL.
+    /// Bucket 'generated' should allow public reads. Objects are namespaced by user id.
+    func uploadGeneratedImage(data: Data, ext: String = "jpg") async -> Result<String, SupabaseError> {
+        do {
+            let uid = await SupabaseAuth.shared.userId ?? "anonymous"
+            let filename = UUID().uuidString + "." + ext
+            let objectPath = "\(uid)/\(filename)"
+            let uploadURL = baseURL.appendingPathComponent("/storage/v1/object/generated/\(objectPath)")
+            var req = URLRequest(url: uploadURL)
+            req.httpMethod = "POST"
+            req.addValue(anonKey, forHTTPHeaderField: "apikey")
+            if let token = SupabaseAuth.shared.accessToken, !SupabaseAuth.shared.isLocalSession {
+                req.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            } else {
+                req.addValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization")
+            }
+            req.addValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+            req.addValue("true", forHTTPHeaderField: "x-upsert")
+            req.httpBody = data
+            let (respData, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: respData, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            let publicURL = baseURL.appendingPathComponent("/storage/v1/object/public/generated/\(objectPath)").absoluteString
+            return .success(publicURL)
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    /// Insert a row into user_images(url, user_id)
+    func insertUserImage(url: String) async -> Result<Void, SupabaseError> {
+        do {
+            struct Row: Codable { let url: String; let user_id: String? }
+            let uid = await SupabaseAuth.shared.userId
+            let row = Row(url: url, user_id: uid)
+            let body = try JSONEncoder().encode([row])
+            let endpoint = restBase.appendingPathComponent("user_images")
+            let req = authedRequest(url: endpoint, method: "POST", jsonBody: body, prefer: "return=minimal")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            return .success(())
+        } catch {
+            return .failure(.network(error))
+        }
+    }
+
+    /// Fetch list of image URLs for the current user
+    func fetchUserImages(userId: String, limit: Int = 60) async -> Result<[String], SupabaseError> {
+        do {
+            var comps = URLComponents(url: restBase.appendingPathComponent("user_images"), resolvingAgainstBaseURL: false)!
+            comps.queryItems = [
+                URLQueryItem(name: "select", value: "url,created_at"),
+                URLQueryItem(name: "user_id", value: "eq.\(userId)"),
+                URLQueryItem(name: "order", value: "created_at.desc"),
+                URLQueryItem(name: "limit", value: String(limit))
+            ]
+            guard let url = comps.url else { return .failure(.invalidURL) }
+            let req = authedRequest(url: url, method: "GET")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { return .failure(.noData) }
+            guard (200...299).contains(http.statusCode) else {
+                let bodyStr = String(data: data, encoding: .utf8)
+                return .failure(.badStatus(http.statusCode, bodyStr))
+            }
+            struct Row: Codable { let url: String }
+            let rows = try JSONDecoder().decode([Row].self, from: data)
+            return .success(rows.map { $0.url })
+        } catch let e as DecodingError {
+            return .failure(.decoding(e))
+        } catch {
+            return .failure(.network(error))
+        }
+    }
     // MARK: - Recent Chats REST helpers
     private var restBase: URL { baseURL.appendingPathComponent("/rest/v1") }
 

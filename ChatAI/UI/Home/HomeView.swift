@@ -430,7 +430,7 @@ private struct AccountActionCard: View {
 
                     // Hidden navigation to Library; when picking an image, attach to new chat
                     NavigationLink(isActive: $showLibrary) {
-                        LibraryView { data, mime in
+                        CloudLibraryView { data, mime in
                             attachmentData = data
                             attachmentMime = mime
                             goToChatWithAttachment = true

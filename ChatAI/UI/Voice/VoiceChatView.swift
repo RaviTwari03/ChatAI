@@ -254,6 +254,11 @@ struct VoiceChatView: View {
                         // Do not TTS the image
                         isSending = false
                     }
+                    // Upload to Supabase and record URL
+                    Task {
+                        let up = await SupabaseService().uploadGeneratedImage(data: data)
+                        if case .success(let url) = up { let _ = await SupabaseService().insertUserImage(url: url) }
+                    }
                 } else {
                     throw NSError(domain: "VoiceChatView", code: -10, userInfo: [NSLocalizedDescriptionKey: "Failed to decode image data"])
                 }
