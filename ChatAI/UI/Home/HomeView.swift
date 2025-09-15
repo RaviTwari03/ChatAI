@@ -438,6 +438,7 @@ private struct AccountActionCard: View {
     @State private var showPhotosPicker: Bool = false
     @State private var pickedItem: PhotosPickerItem? = nil
     @State private var showDocPicker: Bool = false
+    @State private var docPickerTypes: [UTType] = []
     @State private var goToChatWithAttachment: Bool = false
     @State private var attachmentData: Data? = nil
     @State private var attachmentMime: String? = nil
@@ -680,7 +681,8 @@ private struct AccountActionCard: View {
                             },
                             onAudio: {
                                 showPlusMenu = false
-                                // Use document picker to attach audio; handled same as file for now
+                                // Audio-only types
+                                docPickerTypes = [.audio, .mp3, .mpeg4Audio, .wav, .aiff].compactMap { $0 }
                                 showDocPicker = true
                             },
                             onFile: {
@@ -708,7 +710,7 @@ private struct AccountActionCard: View {
                         }
                     }
                     .sheet(isPresented: $showDocPicker) {
-                        DocumentPickerRepresentable { url in
+                        DocumentPickerRepresentable(contentTypes: docPickerTypes.isEmpty ? nil : docPickerTypes) { url in
                             guard let url else { return }
                             do {
                                 let data = try Data(contentsOf: url)
@@ -719,7 +721,9 @@ private struct AccountActionCard: View {
                                     attachmentMime = "application/octet-stream"
                                 }
                                 goToChatWithAttachment = true
-                            } catch { }
+                                // Reset types after use
+                                docPickerTypes = []
+                            } catch { docPickerTypes = [] }
                         }
                     }
 

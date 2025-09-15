@@ -730,16 +730,26 @@ extension CGPDFPage {
     func text() -> String { "[text extraction not implemented]" }
 }
 
-// UIDocumentPicker wrapper for SwiftUI
+// UIDocumentPicker wrapper for SwiftUI (configurable content types)
 struct DocumentPickerRepresentable: UIViewControllerRepresentable {
     typealias UIViewControllerType = UIDocumentPickerViewController
     let onPick: (URL?) -> Void
+    let contentTypes: [UTType]
+
+    init(contentTypes: [UTType]? = nil, onPick: @escaping (URL?) -> Void) {
+        self.onPick = onPick
+        // Default types: common docs, images, and audio
+        if let provided = contentTypes, !provided.isEmpty {
+            self.contentTypes = provided
+        } else {
+            self.contentTypes = [
+                .pdf, .plainText, .image, .png, .jpeg, .audio, .mp3, .mpeg4Audio, .wav, .aiff
+            ].compactMap { $0 }
+        }
+    }
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let types: [UTType] = [
-            .pdf, .plainText, .image, .png, .jpeg
-        ].compactMap { $0 }
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: true)
         picker.allowsMultipleSelection = false
         picker.delegate = context.coordinator
         return picker
