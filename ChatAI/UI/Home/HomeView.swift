@@ -520,10 +520,10 @@ private struct AccountActionCard: View {
                     Image(systemName: "sparkle")
                         .foregroundColor(.white.opacity(0.9))
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, 10)
 
                 // Bottom quick actions (gradient cards)
-                HStack(spacing: 12) {
+                HStack(spacing: 20) {
                     Button(action: { showImagePromptSheet = true }) {
                         GradientActionButton(title: "Create Images")
                     }
@@ -538,7 +538,7 @@ private struct AccountActionCard: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 10)
+                .padding(.bottom, 20)
 
                 // Composer bar redesigned (single rounded container with actions)
                 VStack(spacing: 10) {
@@ -734,7 +734,7 @@ private struct AccountActionCard: View {
                     } label: { EmptyView() }
                 }
                 .padding(.horizontal, 14)
-                .padding(.bottom, 10)
+                .padding(.bottom, -52)
                 // Sheets for quick actions & links
                 .sheet(isPresented: $showImagePromptSheet) {
                     PromptInputSheet(
