@@ -32,8 +32,8 @@ final class XAIService: ImageGenerationService {
     private struct Message: Decodable { let role: String; let content: String }
     private struct ChatResponse: Decodable { let choices: [Choice] }
 
-    func complete(prompt: String) async throws -> String {
-        print("🚀 Using xAI provider: GROK AI [grokai]")
+    func complete(prompt: String, model: String) async throws -> String {
+        print("🚀 Using xAI provider: \(model) [grokai]")
         guard let url = URL(string: "https://api.x.ai/v1/chat/completions") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -41,7 +41,7 @@ final class XAIService: ImageGenerationService {
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let body = ChatRequest(
-            model: "grok-beta",
+            model: model,
             messages: [
                 ["role": "system", "content": "You are Grok, a helpful AI assistant."],
                 ["role": "user", "content": prompt]
@@ -58,9 +58,17 @@ final class XAIService: ImageGenerationService {
         return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    // New: multi-turn chat completion using full messages
+    // Backwards compatibility defaults
+    func complete(prompt: String) async throws -> String {
+        try await complete(prompt: prompt, model: "grok-beta")
+    }
     func complete(messages: [[String: String]]) async throws -> String {
-        print("🚀 Using xAI provider (multi-turn): GROK AI [grokai]")
+        try await complete(messages: messages, model: "grok-beta")
+    }
+
+    // New: multi-turn chat completion using full messages
+    func complete(messages: [[String: String]], model: String) async throws -> String {
+        print("🚀 Using xAI provider (multi-turn): \(model) [grokai]")
         guard let url = URL(string: "https://api.x.ai/v1/chat/completions") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -68,7 +76,7 @@ final class XAIService: ImageGenerationService {
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let body = ChatRequest(
-            model: "grok-beta",
+            model: model,
             messages: messages
         )
         req.httpBody = try JSONEncoder().encode(body)

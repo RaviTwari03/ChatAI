@@ -32,8 +32,9 @@ final class OpenAIService: ImageGenerationService {
     private struct Message: Decodable { let role: String; let content: String }
     private struct ChatResponse: Decodable { let choices: [Choice] }
 
-    func complete(prompt: String) async throws -> String {
-        print("🚀 Using OpenAI provider: ChatGPT mini [openai]")
+    // Entry point with explicit model
+    func complete(prompt: String, model: String) async throws -> String {
+        print("🚀 Using OpenAI provider: \(model) [openai]")
         guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -41,7 +42,7 @@ final class OpenAIService: ImageGenerationService {
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let body = ChatRequest(
-            model: "gpt-4o-mini",
+            model: model,
             messages: [
                 ["role": "system", "content": "You are a helpful assistant."],
                 ["role": "user", "content": prompt]
@@ -58,19 +59,24 @@ final class OpenAIService: ImageGenerationService {
         return decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
-    // New: multi-turn chat completion using full message list
+    // Backwards compatibility: default to gpt-4o-mini
+    func complete(prompt: String) async throws -> String {
+        try await complete(prompt: prompt, model: "gpt-4o-mini")
+    }
     func complete(messages: [[String: String]]) async throws -> String {
-        print("🚀 Using OpenAI provider (multi-turn): ChatGPT mini [openai]")
+        try await complete(messages: messages, model: "gpt-4o-mini")
+    }
+
+    // New: multi-turn chat completion using full message list with explicit model
+    func complete(messages: [[String: String]], model: String) async throws -> String {
+        print("🚀 Using OpenAI provider (multi-turn): \(model) [openai]")
         guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { throw URLError(.badURL) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
         req.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-        let body = ChatRequest(
-            model: "gpt-4o-mini",
-            messages: messages
-        )
+        let body = ChatRequest(model: model, messages: messages)
         req.httpBody = try JSONEncoder().encode(body)
 
         let (data, resp) = try await URLSession.shared.data(for: req)

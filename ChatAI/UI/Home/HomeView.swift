@@ -456,6 +456,8 @@ private struct AccountActionCard: View {
     @State private var showScanner: Bool = false
     // Keyboard focus for bottom composer
     @FocusState private var isComposerFocused: Bool
+    // Provider chip frame to anchor the dropdown animation
+    @State private var providerChipFrame: CGRect = .zero
     // Delete confirmation state
     @State private var showDeleteConfirm: Bool = false
     @State private var chatToDelete: RecentChat? = nil
@@ -495,6 +497,13 @@ private struct AccountActionCard: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    // Capture the global frame of the provider chip to anchor the dropdown
+                    .background(
+                        GeometryReader { gp in
+                            Color.clear
+                                .onAppear { providerChipFrame = gp.frame(in: .global) }
+                        }
+                    )
 
                     Spacer(minLength: 0)
 
@@ -874,24 +883,42 @@ private struct AccountActionCard: View {
         // Provider menu overlay
         .overlay(alignment: .top) {
             if showProviderMenu {
-                ZStack(alignment: .top) {
-                    // tap-catcher
-                    Color.black.opacity(0.001)
-                        .ignoresSafeArea()
-                        .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false } }
-                    // Card
-                    ProviderMenuCard(
-                        providers: providers,
-                        selectedId: selectedProviderId,
-                        onSelect: { id in
-                            selectedProviderId = id
-                            APIRegistry.shared.setCurrentProvider(id: id)
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false }
+                GeometryReader { geo in
+                    ZStack(alignment: .top) {
+                        // tap-catcher
+                        Color.black.opacity(0.001)
+                            .ignoresSafeArea()
+                            .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false } }
+                        // Half-screen container with scrollable card
+                        VStack(spacing: 0) {
+                            ScrollView {
+                                ProviderMenuCard(
+                                    providers: providers,
+                                    selectedId: selectedProviderId,
+                                    onSelect: { id in
+                                        selectedProviderId = id
+                                        APIRegistry.shared.setCurrentProvider(id: id)
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false }
+                                    }
+                                )
+                                .padding(.top, 8)
+                                .padding(.bottom, 16)
+                            }
                         }
-                    )
-                    .padding(.top, 64)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: geo.size.height * 0.5)
+                        // Position the dropdown just below the provider chip
+                        .padding(.top, max(0, providerChipFrame.maxY) + 8)
+                        // Smooth pop-in from the chip location
+                        .transition({ () -> AnyTransition in
+                            let ax = max(0.0, min(1.0, providerChipFrame.midX / max(geo.size.width, 1)))
+                            let ay = max(0.0, min(1.0, providerChipFrame.midY / max(geo.size.height, 1)))
+                            let anchor = UnitPoint(x: ax, y: ay)
+                            return AnyTransition.scale(scale: 0.92, anchor: anchor).combined(with: .opacity)
+                        }())
+                    }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .animation(.spring(response: 0.32, dampingFraction: 0.88, blendDuration: 0.2), value: showProviderMenu)
             }
         }
         // Dismiss keyboard when tapping outside

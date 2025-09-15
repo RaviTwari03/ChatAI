@@ -33,15 +33,15 @@ final class GeminiService: ImageGenerationService {
     private struct Candidate: Decodable { let content: CandidateContent }
 
     // MARK: - Public API
-    func complete(prompt: String) async throws -> String {
-        print("🚀 Using Google provider: Gemini [gemini]")
+    func complete(prompt: String, model: String) async throws -> String {
+        print("🚀 Using Google provider: \(model) [gemini]")
         let user = Content(role: "user", parts: [Part(text: prompt)])
         let body = GenerateRequest(contents: [user])
-        return try await send(body: body)
+        return try await send(body: body, model: model)
     }
 
-    func complete(messages: [[String: String]]) async throws -> String {
-        print("🚀 Using Google provider (multi-turn): Gemini [gemini]")
+    func complete(messages: [[String: String]], model: String) async throws -> String {
+        print("🚀 Using Google provider (multi-turn): \(model) [gemini]")
         // Map generic messages to Gemini contents. If role missing, default to user.
         let contents: [Content] = messages.map { m in
             let role = (m["role"] ?? "user").lowercased() == "assistant" ? "model" : "user"
@@ -49,12 +49,11 @@ final class GeminiService: ImageGenerationService {
             return Content(role: role, parts: [Part(text: text)])
         }
         let body = GenerateRequest(contents: contents)
-        return try await send(body: body)
+        return try await send(body: body, model: model)
     }
 
     // MARK: - Networking
-    private func send(body: GenerateRequest) async throws -> String {
-        let model = "gemini-1.5-flash"
+    private func send(body: GenerateRequest, model: String) async throws -> String {
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)") else {
             throw URLError(.badURL)
         }
@@ -71,6 +70,14 @@ final class GeminiService: ImageGenerationService {
         let decoded = try JSONDecoder().decode(GenerateResponse.self, from: data)
         let text = decoded.candidates.first?.content.parts.compactMap { $0.text }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return text ?? ""
+    }
+
+    // Backwards compatibility defaults
+    func complete(prompt: String) async throws -> String {
+        try await complete(prompt: prompt, model: "gemini-1.5-flash")
+    }
+    func complete(messages: [[String: String]]) async throws -> String {
+        try await complete(messages: messages, model: "gemini-1.5-flash")
     }
 
     // MARK: - ImageGenerationService

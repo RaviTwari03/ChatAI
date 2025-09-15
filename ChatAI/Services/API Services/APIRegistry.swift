@@ -8,8 +8,8 @@
 import Foundation
 
 struct APIProvider: Identifiable, Equatable {
-    let id: String
-    let displayName: String
+    let id: String            // unique selection id, e.g. "openai:gpt-4.1-mini"
+    let displayName: String   // shown in UI
 }
 
 /// Central place to declare which API providers are available and manage runtime switching.
@@ -17,14 +17,33 @@ struct APIProvider: Identifiable, Equatable {
 final class APIRegistry {
     static let shared = APIRegistry()
 
-    /// Available providers exposed to the UI
+    /// Available providers exposed to the UI as specific model variants (to mirror UX in screenshots)
+    /// Note: IDs use the format "family:model" when applicable, so routing can detect provider family and model.
     let providers: [APIProvider] = [
-        APIProvider(id: "openai", displayName: "ChatGPT mini"),
-        APIProvider(id: "grokai", displayName: "GROK AI"),
-        APIProvider(id: "gemini", displayName: "Gemini"),
-        APIProvider(id: "deepseek", displayName: "DeepSeek"),
-        APIProvider(id: "claude", displayName: "Claude"),
-        APIProvider(id: "stability", displayName: "Stability")
+        // OpenAI
+        APIProvider(id: "openai:chatgpt-5-mini", displayName: "ChatGPT 5 mini"),
+        APIProvider(id: "openai:gpt-4.1", displayName: "ChatGPT 4.1"),
+        APIProvider(id: "openai:gpt-4.1-mini", displayName: "ChatGPT 4.1 mini"),
+        APIProvider(id: "openai:gpt-o4-mini-high", displayName: "GPT o4-mini (high)"),
+        APIProvider(id: "openai:gpt-4o-mini", displayName: "ChatGPT mini"),
+
+        // xAI Grok
+        APIProvider(id: "grokai:grok-4", displayName: "Grok 4"),
+
+        // Google Gemini
+        APIProvider(id: "gemini:gemini-2.5-pro", displayName: "Gemini 2.5 Pro"),
+        APIProvider(id: "gemini:gemini-2.0-flash", displayName: "Gemini 2.0 Flash"),
+        APIProvider(id: "gemini:gemini-1.5-flash", displayName: "Gemini 1.5 Flash"),
+
+        // Anthropic Claude
+        APIProvider(id: "claude:claude-3.7-sonnet", displayName: "Claude 3.7 Sonnet"),
+        APIProvider(id: "claude:claude-3.5-sonnet", displayName: "Claude 3.5 Sonnet"),
+
+        // DeepSeek
+        APIProvider(id: "deepseek:deepseek-r1", displayName: "DeepSeek-R1"),
+
+        // Stability (image edits)
+        APIProvider(id: "stability:sd", displayName: "Stability")
     ]
 
     private let defaults = UserDefaults.standard
@@ -33,8 +52,8 @@ final class APIRegistry {
     private init() {
         // Ensure a default provider is set once
         if defaults.string(forKey: selectionKey) == nil {
-            defaults.set("openai", forKey: selectionKey)
-            print("🟢 Default API provider set to: ChatGPT mini [openai]")
+            defaults.set("openai:gpt-4o-mini", forKey: selectionKey)
+            print("🟢 Default API provider set to: ChatGPT mini [openai:gpt-4o-mini]")
         }
     }
 
@@ -57,10 +76,20 @@ final class APIRegistry {
     func setCurrentProvider(id: String) {
         guard providers.contains(where: { $0.id == id }) else {
             print("⚠️ Unknown provider id: \(id). Falling back to OpenAI.")
-            currentProviderId = "openai"
+            currentProviderId = "openai:gpt-4o-mini"
             return
         }
         currentProviderId = id
+    }
+
+    // MARK: - Resolve Provider Family and Model
+    private func familyAndModel(from id: String) -> (family: String, model: String?) {
+        if let range = id.range(of: ":") {
+            let fam = String(id[id.startIndex..<range.lowerBound])
+            let model = String(id[range.upperBound...])
+            return (fam, model)
+        }
+        return (id, nil)
     }
 
     /// Convenience router for sending a chat request using the active provider.
@@ -68,18 +97,19 @@ final class APIRegistry {
     @discardableResult
     func complete(prompt: String) async throws -> String {
         let selected = activeProvider()
+        let (family, model) = familyAndModel(from: selected.id)
         print("🔁 Using provider: \(selected.displayName) [\(selected.id)]")
-        switch selected.id {
+        switch family {
         case "grokai":
-            return try await XAIService.shared.complete(prompt: prompt)
+            return try await XAIService.shared.complete(prompt: prompt, model: model ?? "grok-beta")
         case "gemini":
-            return try await GeminiService.shared.complete(prompt: prompt)
+            return try await GeminiService.shared.complete(prompt: prompt, model: model ?? "gemini-1.5-flash")
         case "deepseek":
             return try await DeepSeekService.shared.complete(prompt: prompt)
         case "claude":
             return try await ClaudeService.shared.complete(prompt: prompt)
         default:
-            return try await OpenAIService.shared.complete(prompt: prompt)
+            return try await OpenAIService.shared.complete(prompt: prompt, model: model ?? "gpt-4o-mini")
         }
     }
 
@@ -88,18 +118,19 @@ final class APIRegistry {
     @discardableResult
     func complete(messages: [[String: String]]) async throws -> String {
         let selected = activeProvider()
+        let (family, model) = familyAndModel(from: selected.id)
         print("🔁 Using provider (multi-turn): \(selected.displayName) [\(selected.id)]")
-        switch selected.id {
+        switch family {
         case "grokai":
-            return try await XAIService.shared.complete(messages: messages)
+            return try await XAIService.shared.complete(messages: messages, model: model ?? "grok-beta")
         case "gemini":
-            return try await GeminiService.shared.complete(messages: messages)
+            return try await GeminiService.shared.complete(messages: messages, model: model ?? "gemini-1.5-flash")
         case "deepseek":
             return try await DeepSeekService.shared.complete(messages: messages)
         case "claude":
             return try await ClaudeService.shared.complete(messages: messages)
         default:
-            return try await OpenAIService.shared.complete(messages: messages)
+            return try await OpenAIService.shared.complete(messages: messages, model: model ?? "gpt-4o-mini")
         }
     }
 
@@ -112,7 +143,7 @@ final class APIRegistry {
     func generateImage(prompt: String, size: String = "1024x1024") async throws -> Data {
         let selected = activeProvider()
         print("🖼️ Using provider for image gen: \(selected.displayName) [\(selected.id)]")
-        switch selected.id {
+        switch familyAndModel(from: selected.id).family {
         case "grokai":
             // Not yet implemented for xAI
             throw NSError(domain: "APIRegistry.Image", code: -100, userInfo: [NSLocalizedDescriptionKey: "Image generation not supported for GROK AI yet. Switch to OpenAI in settings."])
@@ -125,7 +156,7 @@ final class APIRegistry {
     func analyzeImage(question: String, imageData: Data, mimeType: String = "image/png") async throws -> String {
         let selected = activeProvider()
         print("👀 Using provider for vision: \(selected.displayName) [\(selected.id)]")
-        switch selected.id {
+        switch familyAndModel(from: selected.id).family {
         case "grokai":
             throw NSError(domain: "APIRegistry.Vision", code: -200, userInfo: [NSLocalizedDescriptionKey: "Vision Q&A not supported for GROK AI yet. Switch to OpenAI in settings."])
         default:
@@ -137,7 +168,7 @@ final class APIRegistry {
     func editImage(image: Data, mask: Data?, prompt: String, size: String = "1024x1024") async throws -> Data {
         let selected = activeProvider()
         print("✏️ Image edit via provider: \(selected.displayName) [\(selected.id)]")
-        switch selected.id {
+        switch familyAndModel(from: selected.id).family {
         case "stability":
             return try await StabilityImageEditService.shared.edit(image: image, mask: mask, prompt: prompt, size: size)
         default:
@@ -160,7 +191,7 @@ final class APIRegistry {
     func upscale(image: Data, scale: Int = 2) async throws -> Data {
         let selected = activeProvider()
         print("🔍 Upscale via: \(selected.displayName) [\(selected.id)]")
-        switch selected.id {
+        switch familyAndModel(from: selected.id).family {
         case "stability":
             return try await StabilityImageEditService.shared.upscale(image: image, scale: scale)
         default:
