@@ -377,6 +377,40 @@ private struct AccountActionCard: View {
             goToChat = true
         }
     }
+    
+    // Camera launcher with permission and availability checks
+    private func openCamera() {
+        // Ensure device has camera
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            alertTitle = "Camera Unavailable"
+            alertMessage = "This device doesn't have a camera."
+            showAlert = true
+            return
+        }
+        // Check authorization
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            showCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted { self.showCamera = true }
+                    else {
+                        self.alertTitle = "Camera Permission"
+                        self.alertMessage = "Camera access is denied. Enable it in Settings > Privacy > Camera."
+                        self.showAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            alertTitle = "Camera Permission"
+            alertMessage = "Camera access is denied. Enable it in Settings > Privacy > Camera."
+            showAlert = true
+        @unknown default:
+            showCamera = true
+        }
+    }
     // Draft for bottom composer and navigation trigger
     @State private var homeDraft: String = ""
     @State private var goToChat: Bool = false
@@ -528,7 +562,7 @@ private struct AccountActionCard: View {
                         GradientActionButton(title: "Create Images")
                     }
                     .buttonStyle(.plain)
-                    Button(action: { showCamera = true }) {
+                    Button(action: { openCamera() }) {
                         GradientActionButton(title: "Open Camera")
                     }
                     .buttonStyle(.plain)
@@ -637,7 +671,7 @@ private struct AccountActionCard: View {
                             },
                             onCamera: {
                                 showPlusMenu = false
-                                showCamera = true
+                                openCamera()
                             },
                             onPhotos: {
                                 showPlusMenu = false
@@ -755,7 +789,7 @@ private struct AccountActionCard: View {
                     .presentationDetents([.medium])
                 }
                 // Present camera when user taps Open Camera or Plus > Camera
-                .sheet(isPresented: $showCamera) {
+                .fullScreenCover(isPresented: $showCamera) {
                     ImagePickerRepresentable(sourceType: .camera) { image in
                         // Convert to JPEG and store attachment
                         if let img = image, let data = img.jpegData(compressionQuality: 0.9) {
