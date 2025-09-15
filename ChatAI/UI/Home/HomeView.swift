@@ -854,6 +854,20 @@ private struct AccountActionCard: View {
                 SettingsView()
             } label: { EmptyView() }
         }
+        // Frosted blur over the whole HomeView when + menu is open
+        .overlay(
+            Group {
+                if showPlusMenu {
+                    Color.clear
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
+        )
+        .blur(radius: showPlusMenu ? 14 : 0)
+        .animation(.easeInOut(duration: 0.22), value: showPlusMenu)
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
         .animation(.spring(response: 0.30, dampingFraction: 0.86, blendDuration: 0.2), value: showSidePanel)
