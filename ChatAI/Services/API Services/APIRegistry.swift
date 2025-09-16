@@ -21,6 +21,7 @@ final class APIRegistry {
     /// Note: IDs use the format "family:model" when applicable, so routing can detect provider family and model.
     let providers: [APIProvider] = [
         // OpenAI
+        APIProvider(id: "openai:chatgpt-5", displayName: "ChatGPT 5"),
         APIProvider(id: "openai:chatgpt-5-mini", displayName: "ChatGPT 5 mini"),
         APIProvider(id: "openai:gpt-4.1", displayName: "ChatGPT 4.1"),
         APIProvider(id: "openai:gpt-4.1-mini", displayName: "ChatGPT 4.1 mini"),
@@ -92,6 +93,41 @@ final class APIRegistry {
         return (id, nil)
     }
 
+    /// Map friendly/alias model ids from the UI to real API model slugs supported by providers.
+    private func normalizeModel(family: String, model: String?) -> String? {
+        guard let m = model else { return nil }
+        switch family {
+        case "openai":
+            // Canonical OpenAI chat models
+            let map: [String: String] = [
+                "chatgpt-5": "gpt-4.1",                   // map to a widely available slug
+                "chatgpt-5-mini": "gpt-4o-mini",          // alias not available -> map to 4o-mini
+                "gpt-4o-mini": "gpt-4o-mini",
+                "gpt-4.1": "gpt-4.1",
+                "gpt-4.1-mini": "gpt-4.1-mini",
+                "gpt-o4-mini-high": "gpt-4o-mini"         // alias -> 4o-mini
+            ]
+            return map[m] ?? m
+        case "gemini":
+            // Public Gemini slugs commonly available
+            let map: [String: String] = [
+                "gemini-2.5-pro": "gemini-1.5-pro",
+                "gemini-2.0-flash": "gemini-1.5-flash",   // map to closest widely-available
+                "gemini-1.5-flash": "gemini-1.5-flash"
+            ]
+            return map[m] ?? m
+        case "grokai":
+            // xAI Grok models
+            let map: [String: String] = [
+                "grok-4": "grok-beta",
+                "grok-beta": "grok-beta"
+            ]
+            return map[m] ?? m
+        default:
+            return model
+        }
+    }
+
     /// Convenience router for sending a chat request using the active provider.
     /// You can call this from your view model / UI instead of referencing a concrete service.
     @discardableResult
@@ -99,17 +135,18 @@ final class APIRegistry {
         let selected = activeProvider()
         let (family, model) = familyAndModel(from: selected.id)
         print("🔁 Using provider: \(selected.displayName) [\(selected.id)]")
+        let norm = normalizeModel(family: family, model: model)
         switch family {
         case "grokai":
-            return try await XAIService.shared.complete(prompt: prompt, model: model ?? "grok-beta")
+            return try await XAIService.shared.complete(prompt: prompt, model: norm ?? "grok-beta")
         case "gemini":
-            return try await GeminiService.shared.complete(prompt: prompt, model: model ?? "gemini-1.5-flash")
+            return try await GeminiService.shared.complete(prompt: prompt, model: norm ?? "gemini-1.5-flash")
         case "deepseek":
             return try await DeepSeekService.shared.complete(prompt: prompt)
         case "claude":
             return try await ClaudeService.shared.complete(prompt: prompt)
         default:
-            return try await OpenAIService.shared.complete(prompt: prompt, model: model ?? "gpt-4o-mini")
+            return try await OpenAIService.shared.complete(prompt: prompt, model: norm ?? "gpt-4o-mini")
         }
     }
 
@@ -120,17 +157,18 @@ final class APIRegistry {
         let selected = activeProvider()
         let (family, model) = familyAndModel(from: selected.id)
         print("🔁 Using provider (multi-turn): \(selected.displayName) [\(selected.id)]")
+        let norm = normalizeModel(family: family, model: model)
         switch family {
         case "grokai":
-            return try await XAIService.shared.complete(messages: messages, model: model ?? "grok-beta")
+            return try await XAIService.shared.complete(messages: messages, model: norm ?? "grok-beta")
         case "gemini":
-            return try await GeminiService.shared.complete(messages: messages, model: model ?? "gemini-1.5-flash")
+            return try await GeminiService.shared.complete(messages: messages, model: norm ?? "gemini-1.5-flash")
         case "deepseek":
             return try await DeepSeekService.shared.complete(messages: messages)
         case "claude":
             return try await ClaudeService.shared.complete(messages: messages)
         default:
-            return try await OpenAIService.shared.complete(messages: messages, model: model ?? "gpt-4o-mini")
+            return try await OpenAIService.shared.complete(messages: messages, model: norm ?? "gpt-4o-mini")
         }
     }
 

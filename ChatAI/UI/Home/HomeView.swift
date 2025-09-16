@@ -491,9 +491,13 @@ private struct AccountActionCard: View {
                                 Text(selectedDisplayName)
                                     .font(.subheadline)
                                     .lineLimit(1)
-                                Image(systemName: "waveform")
+                                Image(systemName: "chevron.down")
                                     .font(.caption2)
+                                    .rotationEffect(.degrees(showProviderMenu ? 180 : 0))
+                                    .animation(.easeInOut(duration: 0.2), value: showProviderMenu)
                             }
+                            // Fix the width to keep the title visually centered relative to the chevron
+                            .frame(width: 140, alignment: .center)
                         }
                     }
                     .buttonStyle(.plain)
@@ -889,7 +893,17 @@ private struct AccountActionCard: View {
                         Color.black.opacity(0.001)
                             .ignoresSafeArea()
                             .onTapGesture { withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false } }
-                        // Half-screen container with scrollable card
+                        // Half-screen styled dropdown sized similarly to the reference
+                        // Compute compact width anchored to the chip, with safe margins
+                        let desiredWidth = min(geo.size.width * 0.80, 360)
+                        let desiredHeight = geo.size.height * 0.5
+                        // Center horizontally to the provider chip's midX, respecting safe margins
+                        let centerX = max(desiredWidth/2 + 16, min(providerChipFrame.midX, geo.size.width - desiredWidth/2 - 16))
+                        // Place the TOP of the card 8pt below the chip; convert to center Y for .position
+                        let topY = providerChipFrame.maxY + 8
+                        let centerYRaw = topY + desiredHeight/2
+                        let centerY = min(max(centerYRaw, desiredHeight/2 + 24), geo.size.height - desiredHeight/2 - 24)
+
                         VStack(spacing: 0) {
                             ScrollView {
                                 ProviderMenuCard(
@@ -901,14 +915,14 @@ private struct AccountActionCard: View {
                                         withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) { showProviderMenu = false }
                                     }
                                 )
-                                .padding(.top, 8)
-                                .padding(.bottom, 16)
+                                .padding(.vertical, 8)
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: geo.size.height * 0.5)
-                        // Position the dropdown just below the provider chip
-                        .padding(.top, max(0, providerChipFrame.maxY) + 8)
+                        .frame(width: desiredWidth, height: desiredHeight)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.25), radius: 16, x: 0, y: 8)
+                        .position(x: centerX, y: centerY)
                         // Smooth pop-in from the chip location
                         .transition({ () -> AnyTransition in
                             let ax = max(0.0, min(1.0, providerChipFrame.midX / max(geo.size.width, 1)))

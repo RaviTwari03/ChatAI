@@ -11,6 +11,8 @@ import Photos
 import PhotosUI
 import UniformTypeIdentifiers
 import CoreGraphics
+import PDFKit
+import Speech
 
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
@@ -453,8 +455,15 @@ struct ChatView: View {
                 if let mimeType = mime, mimeType.hasPrefix("image/") {
                     let reply = try await APIRegistry.shared.analyzeImage(question: trimmed, imageData: data, mimeType: mimeType)
                     vm.messages.append(ChatMessage(text: reply, isUser: false))
+                } else if let mimeType = mime, mimeType.hasPrefix("audio/") {
+                    // Transcribe audio then send to the model
+                    let transcript = await transcribeAudio(data: data, mime: mimeType) ?? "[Transcription failed]"
+                    var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant. The user attached an audio recording; use the transcript to answer their question."]]
+                    history.append(["role": "user", "content": "Transcript (first 8k chars):\n\n\(transcript.prefix(8000))\n\nQuestion: \(trimmed)"])
+                    let reply = try await APIRegistry.shared.complete(messages: history)
+                    vm.messages.append(ChatMessage(text: reply, isUser: false))
                 } else {
-                    // For non-image files, try simple text extraction for PDF/TXT and send content as context
+                    // For non-image files, extract text (PDF/RTF/TXT/CSV/TSV/HTML) and send as context
                     let extracted = extractText(from: data, mime: mime ?? "application/octet-stream")
                     var history: [[String: String]] = [["role": "system", "content": "You are a helpful assistant. Use the provided document content to answer the user question."]]
                     history.append(["role": "user", "content": "Document content:\n\n\(extracted)\n\nQuestion: \(trimmed)"])
@@ -469,24 +478,87 @@ struct ChatView: View {
         }
     }
 
-    // Simple text extraction for PDFs and plain text
+    // Simple text extraction for common docs
     private func extractText(from data: Data, mime: String) -> String {
         if mime == "text/plain", let s = String(data: data, encoding: .utf8) {
             return s.prefix(8000).description
         }
+        if mime == "application/rtf" || mime == "text/rtf" {
+            if let attributed = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+                return String(attributed.string.prefix(8000))
+            }
+        }
+        if mime == "text/csv" || mime == "text/tab-separated-values" || mime == "text/tsv" || mime == "application/csv" {
+            if let s = String(data: data, encoding: .utf8) { return String(s.prefix(8000)) }
+        }
+        if mime == "text/html" || mime == "application/xhtml+xml" || mime == "application/html" {
+            if let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) {
+                let stripped = html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+                return String(stripped.prefix(8000))
+            }
+        }
+        if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || mime == "application/vnd.openxmlformats-officedocument.presentationml.presentation" {
+            // Placeholder notice; full DOCX/PPTX parsing requires a ZIP reader (e.g., ZIPFoundation via SPM)
+            return "[DOCX/PPTX detected. Native text extraction requires ZIP parsing; consider adding ZIPFoundation. For now, please re-export as PDF or TXT for best results.]"
+        }
         if mime == "application/pdf" {
-            if let doc = CGPDFDocument(CGDataProvider(data: data as CFData)!) {
+            if let pdf = PDFDocument(data: data) {
                 var out = ""
-                let pageCount = min(doc.numberOfPages, 8)
-                for i in 1...pageCount {
-                    if let page = doc.page(at: i) {
-                        out += "\n\n[Page #\(i)]\n" + page.text() // helper below
+                let pageCount = min(pdf.pageCount, 20)
+                for i in 0..<pageCount {
+                    if let page = pdf.page(at: i), let pageText = page.string {
+                        out += "\n\n[Page #\(i+1)]\n" + pageText
                     }
                 }
-                return String(out.prefix(8000))
+                let trimmed = out.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return String(trimmed.prefix(8000)) }
             }
         }
         return "[Unsupported file type]."
+    }
+
+    // Transcribe audio attachment using Apple's Speech framework
+    private func transcribeAudio(data: Data, mime: String) async -> String? {
+        // Request authorization if needed
+        let status = await SFSpeechRecognizer.authorizationStatus()
+        if status == .notDetermined {
+            let granted = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+                SFSpeechRecognizer.requestAuthorization { a in c.resume(returning: a == .authorized) }
+            }
+            if !granted { return nil }
+        } else if status != .authorized {
+            return nil
+        }
+
+        // Write to a temp file
+        let ext: String = {
+            if mime.contains("wav") { return "wav" }
+            if mime.contains("aiff") || mime.contains("aif") { return "aiff" }
+            if mime.contains("m4a") || mime.contains("mpeg4") { return "m4a" }
+            if mime.contains("mp3") { return "mp3" }
+            return "m4a"
+        }()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("audio_\(UUID().uuidString).\(ext)")
+        do { try data.write(to: url) } catch { return nil }
+
+        guard let recognizer = SFSpeechRecognizer() else { return try? await OpenAITranscriptionService.shared.transcribe(fileURL: url) }
+        let request = SFSpeechURLRecognitionRequest(url: url)
+        request.requiresOnDeviceRecognition = false
+
+        return await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
+            recognizer.recognitionTask(with: request) { result, error in
+                if let t = result?.bestTranscription.formattedString, result?.isFinal == true {
+                    c.resume(returning: t)
+                } else if let error = error {
+                    print("Speech recognition error: \(error.localizedDescription)")
+                    // Fallback to OpenAI Whisper
+                    Task {
+                        let text = try? await OpenAITranscriptionService.shared.transcribe(fileURL: url)
+                        c.resume(returning: text)
+                    }
+                }
+            }
+        }
     }
 
     
@@ -725,10 +797,6 @@ private struct ImageBubble: View {
 }
 
 // MARK: - File-scope helpers
-// Minimal PDF text extraction stub to keep build green. Can be improved with PDFKit or OCR.
-extension CGPDFPage {
-    func text() -> String { "[text extraction not implemented]" }
-}
 
 // UIDocumentPicker wrapper for SwiftUI (configurable content types)
 struct DocumentPickerRepresentable: UIViewControllerRepresentable {
@@ -738,13 +806,19 @@ struct DocumentPickerRepresentable: UIViewControllerRepresentable {
 
     init(contentTypes: [UTType]? = nil, onPick: @escaping (URL?) -> Void) {
         self.onPick = onPick
+        // Default types: common docs, images, audio, CSV, TSV, HTML
         // Default types: common docs, images, and audio
         if let provided = contentTypes, !provided.isEmpty {
             self.contentTypes = provided
         } else {
-            self.contentTypes = [
-                .pdf, .plainText, .image, .png, .jpeg, .audio, .mp3, .mpeg4Audio, .wav, .aiff
+            var types: [UTType] = [
+                .pdf, .plainText, .image, .png, .jpeg,
+                .audio, .mp3, .mpeg4Audio, .wav, .aiff,
+                .commaSeparatedText, .tabSeparatedText, .html
             ].compactMap { $0 }
+            if let docx = UTType(filenameExtension: "docx") { types.append(docx) }
+            if let pptx = UTType(filenameExtension: "pptx") { types.append(pptx) }
+            self.contentTypes = types
         }
     }
 
