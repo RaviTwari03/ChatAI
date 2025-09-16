@@ -24,6 +24,88 @@ struct HomeView: View {
         providers.first(where: { $0.id == selectedProviderId })?.displayName ?? ""
     }
 
+// MARK: - Scan Action Sheet (matches PlusActionSheet style)
+private struct ScanActionSheet: View {
+    var onClose: () -> Void
+    var onTextAuto: () -> Void
+    var onTextEnglish: () -> Void
+    var onBarcode: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Grabber + close
+            HStack {
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 44, height: 5)
+                    .padding(.top, 8)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 6)
+
+            // Title
+            HStack {
+                Text("Scan")
+                    .foregroundColor(.white)
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+            // Rows
+            VStack(spacing: 0) {
+                sheetRow(title: "Text (Auto)", system: "doc.text.viewfinder", tint: .cyan, action: onTextAuto)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "Text (English)", system: "textformat.abc.dottedunderline", tint: .blue, action: onTextEnglish)
+                Divider().background(Color.white.opacity(0.12))
+                sheetRow(title: "Barcode", system: "barcode.viewfinder", tint: .mint, action: onBarcode)
+            }
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.clear))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(
+            ZStack {
+                Color.black
+                LinearGradient(colors: [Color.black.opacity(0.0), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom)
+            }
+            .ignoresSafeArea()
+        )
+    }
+
+    @ViewBuilder
+    private func sheetRow(title: String, system: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(tint.opacity(0.18)).frame(width: 28, height: 28)
+                    Image(systemName: system)
+                        .foregroundColor(tint)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                Text(title)
+                    .foregroundColor(.white)
+                    .font(.subheadline)
+                Spacer()
+                Image(systemName: "chevron.right").foregroundColor(.white.opacity(0.35))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.06))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Web Search Sheet with Change API
 private struct WebSearchSheet: View {
     @Binding var text: String
@@ -378,6 +460,32 @@ private struct AccountActionCard: View {
         }
     }
     
+    // Present scanner with availability checks
+    private func presentScanner(mode: ScanMode) {
+        scanMode = mode
+        showScanModeSheet = false
+        if #available(iOS 16.0, *) {
+            if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                // Slight delay to let the sheet dismiss before presenting full screen cover
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    showScanner = true
+                }
+            } else {
+                alertTitle = "Scanner Unavailable"
+                alertMessage = (mode == .barcode) ?
+                    "Barcode scanner requires iOS 16+ and a supported device." :
+                    "Text scanner requires iOS 16+ and a supported device."
+                showAlert = true
+            }
+        } else {
+            alertTitle = "Requires iOS 16+"
+            alertMessage = (mode == .barcode) ?
+                "Update iOS to use barcode scanning." :
+                "Update iOS to use text scanning."
+            showAlert = true
+        }
+    }
+    
     // Camera launcher with permission and availability checks
     private func openCamera() {
         // Ensure device has camera
@@ -454,6 +562,13 @@ private struct AccountActionCard: View {
     @State private var showPlusMenu: Bool = false
     // Barcode scanner
     @State private var showScanner: Bool = false
+    @State private var showScanModeSheet: Bool = false
+    // OCR/Barcode scanning flow
+    private enum ScanMode { case textAuto, textEnglish, barcode }
+    @State private var scanMode: ScanMode = .textAuto
+    @State private var showScanModePicker: Bool = false
+    @State private var showScanReview: Bool = false
+    @State private var scannedTextDraft: String = ""
     // Keyboard focus for bottom composer
     @FocusState private var isComposerFocused: Bool
     // Provider chip frame to anchor the dropdown animation
@@ -621,19 +736,8 @@ private struct AccountActionCard: View {
                             HStack(spacing: 18) {
                                 // Scanner
                                 Button {
-                                    if #available(iOS 16.0, *) {
-                                        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
-                                            showScanner = true
-                                        } else {
-                                            alertTitle = "Scanner Unavailable"
-                                            alertMessage = "Barcode scanner requires iOS 16+ and a supported device."
-                                            showAlert = true
-                                        }
-                                    } else {
-                                        alertTitle = "Requires iOS 16+"
-                                        alertMessage = "Update iOS to use barcode scanning."
-                                        showAlert = true
-                                    }
+                                    // Present custom scan options sheet (styled like PlusActionSheet)
+                                    showScanModeSheet = true
                                 } label: { Image(systemName: "viewfinder") }
                                 .font(.system(size: 16, weight: .semibold))
                                 // Mic or Send toggle
@@ -763,20 +867,86 @@ private struct AccountActionCard: View {
                         PaywallView()
                     } label: { EmptyView() }
 
-                    // Full-screen barcode scanner
+                    // Full-screen scanner (OCR or Barcode based on selected mode)
                     .fullScreenCover(isPresented: $showScanner) {
                         if #available(iOS 16.0, *) {
-                            BarcodeScannerContainer(
-                                onPayload: { payload in
-                                    homeDraft = "barcode: \(payload)"
-                                    showScanner = false
-                                    Task { await startChat() }
-                                },
-                                onCancel: { showScanner = false }
-                            )
+                            Group {
+                                switch scanMode {
+                                case .textAuto:
+                                    TextScannerContainer(
+                                        onText: { text in
+                                            scannedTextDraft = text
+                                            showScanner = false
+                                            showScanReview = true
+                                        },
+                                        onCancel: { showScanner = false },
+                                        languages: nil
+                                    )
+                                case .textEnglish:
+                                    TextScannerContainer(
+                                        onText: { text in
+                                            scannedTextDraft = text
+                                            showScanner = false
+                                            showScanReview = true
+                                        },
+                                        onCancel: { showScanner = false },
+                                        languages: ["en"]
+                                    )
+                                    
+                                case .barcode:
+                                    BarcodeScannerContainer(
+                                        onPayload: { payload in
+                                            scannedTextDraft = payload
+                                            showScanner = false
+                                            showScanReview = true
+                                        },
+                                        onCancel: { showScanner = false }
+                                    )
+                                }
+                            }
                         } else {
                             EmptyView()
                         }
+                    }
+                    // Review & Edit sheet
+                    .sheet(isPresented: $showScanReview) {
+                        NavigationStack {
+                            VStack(alignment: .leading, spacing: 12) {
+                                TextEditor(text: $scannedTextDraft)
+                                    .scrollContentBackground(.hidden)
+                                    .foregroundColor(.white)
+                                    .padding(12)
+                                    .frame(minHeight: 160)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+                                Spacer()
+                            }
+                            .padding(16)
+                            .background(Color.black.ignoresSafeArea())
+                            .toolbar {
+                                ToolbarItem(placement: .principal) { Text("Review Text").foregroundColor(.white) }
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Cancel") { scannedTextDraft = ""; showScanReview = false }
+                                }
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Send") {
+                                        let t = scannedTextDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !t.isEmpty { homeDraft = t; showScanReview = false; Task { await startChat() } }
+                                    }.disabled(scannedTextDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                }
+                            }
+                        }
+                        .preferredColorScheme(.dark)
+                    }
+                    // Mode picker sheet styled like the second screenshot
+                    .sheet(isPresented: $showScanModeSheet) {
+                        ScanActionSheet(
+                            onClose: { showScanModeSheet = false },
+                            onTextAuto: { presentScanner(mode: .textAuto) },
+                            onTextEnglish: { presentScanner(mode: .textEnglish) },
+                            onBarcode: { presentScanner(mode: .barcode) }
+                        )
+                        .presentationDetents([.fraction(0.32)])
+                        .presentationDragIndicator(.hidden)
                     }
 
                     // Hidden navigation to Library (standalone; no redirect to chat on tap)
@@ -870,7 +1040,7 @@ private struct AccountActionCard: View {
         // Frosted blur over the whole HomeView when + menu is open
         .overlay(
             Group {
-                if showPlusMenu {
+                if showPlusMenu || showScanModeSheet {
                     Color.clear
                         .background(.ultraThinMaterial)
                         .ignoresSafeArea()
@@ -879,8 +1049,9 @@ private struct AccountActionCard: View {
                 }
             }
         )
-        .blur(radius: showPlusMenu ? 14 : 0)
+        .blur(radius: (showPlusMenu || showScanModeSheet) ? 14 : 0)
         .animation(.easeInOut(duration: 0.22), value: showPlusMenu)
+        .animation(.easeInOut(duration: 0.22), value: showScanModeSheet)
         .navigationBarBackButtonHidden(true)
         .preferredColorScheme(.dark)
         .animation(.spring(response: 0.30, dampingFraction: 0.86, blendDuration: 0.2), value: showSidePanel)
