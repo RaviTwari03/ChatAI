@@ -450,34 +450,96 @@ private struct VoicePickerView: View {
     @Binding var isPresented: Bool
     @State private var tempSelection: VoiceOption? = nil
     @StateObject private var tts = TTSService()
+    @State private var playingId: UUID? = nil
+    @State private var searchText: String = ""
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                // Title
+            VStack(spacing: 12) {
+                // Title bar with subtle gradient
                 Text("Select Voice")
                     .font(.headline)
                     .foregroundColor(.white)
-                    .padding(.top, 8)
+                    .padding(.top, 10)
 
-                // Rounded list of voices
+                // Search bar
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundColor(.white.opacity(0.7))
+                    TextField("Search voices", text: $searchText)
+                        .foregroundColor(.white)
+                        .textInputAutocapitalization(.never)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                        .padding(.horizontal, 16)
+                )
+
                 ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(VoiceOption.availableVoices) { voice in
-                            VoiceRow(voice: voice,
-                                     isSelected: (tempSelection?.id ?? selectedVoice.id) == voice.id,
-                                     onPreview: { preview(voice) },
-                                     onSelect: { tempSelection = voice; preview(voice) })
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Filtered content
+                        if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                            let q = searchText.lowercased()
+                            let matches = VoiceOption.availableVoices.filter { v in
+                                v.name.lowercased().contains(q) || v.subtitle.lowercased().contains(q) || v.provider.rawValue.lowercased().contains(q)
+                            }
+                            SectionHeader("Results")
+                            ForEach(matches) { voice in
+                                VoiceRow(
+                                    voice: voice,
+                                    isSelected: (tempSelection?.id ?? selectedVoice.id) == voice.id,
+                                    isPlaying: playingId == voice.id,
+                                    onPreview: { togglePreview(voice) },
+                                    onSelect: { tempSelection = voice }
+                                )
+                            }
+                        } else {
+                            SectionHeader("System")
+                            ForEach(VoiceOption.systemPresets) { voice in
+                            VoiceRow(
+                                voice: voice,
+                                isSelected: (tempSelection?.id ?? selectedVoice.id) == voice.id,
+                                isPlaying: playingId == voice.id,
+                                onPreview: { togglePreview(voice) },
+                                onSelect: { tempSelection = voice }
+                            )
+                            }
+
+                            SectionHeader("OpenAI — Standard")
+                            ForEach(VoiceOption.openAIStandard) { voice in
+                            VoiceRow(
+                                voice: voice,
+                                isSelected: (tempSelection?.id ?? selectedVoice.id) == voice.id,
+                                isPlaying: playingId == voice.id,
+                                onPreview: { togglePreview(voice) },
+                                onSelect: { tempSelection = voice }
+                            )
+                            }
+
+                            SectionHeader("OpenAI — Realtime")
+                            ForEach(VoiceOption.openAIRealtime) { voice in
+                            VoiceRow(
+                                voice: voice,
+                                isSelected: (tempSelection?.id ?? selectedVoice.id) == voice.id,
+                                isPlaying: playingId == voice.id,
+                                onPreview: { togglePreview(voice) },
+                                onSelect: { tempSelection = voice }
+                            )
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, 4)
+                    .padding(.bottom, 10)
                 }
 
                 Spacer(minLength: 0)
 
                 HStack(spacing: 12) {
-                    Button(action: { tts.stop(); isPresented = false }) {
+                    Button(action: { tts.stop(); playingId = nil; isPresented = false }) {
                         Text("Cancel")
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -509,13 +571,25 @@ private struct VoicePickerView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
-        .onAppear { tempSelection = selectedVoice }
+        .onAppear {
+            tempSelection = selectedVoice
+            tts.onFinish = { playingId = nil }
+        }
     }
 
     private func preview(_ voice: VoiceOption) {
         tts.selectedVoice = voice
         tts.stop()
+        playingId = voice.id
         tts.speak("Hi, I am \(voice.name). This is how I sound.")
+    }
+
+    private func togglePreview(_ voice: VoiceOption) {
+        if playingId == voice.id && tts.isSpeaking {
+            tts.stop(); playingId = nil
+        } else {
+            preview(voice)
+        }
     }
 
     private func applySelection() {
@@ -527,25 +601,16 @@ private struct VoicePickerView: View {
     private struct VoiceRow: View {
         let voice: VoiceOption
         let isSelected: Bool
+        let isPlaying: Bool
         let onPreview: () -> Void
         let onSelect: () -> Void
 
         var body: some View {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(voice.name)
-                        .foregroundColor(.white)
-                }
+                providerBadge(provider: voice.provider)
+                titleBlock
                 Spacer()
-                Button(action: onPreview) {
-                    Image(systemName: "play.circle.fill")
-                        .foregroundColor(.white)
-                        .font(.title3)
-                }
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .foregroundColor(.blue)
-                }
+                previewButton
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -554,6 +619,88 @@ private struct VoicePickerView: View {
             .contentShape(Rectangle())
             .onTapGesture { onSelect() }
         }
+
+        @ViewBuilder
+        private func providerBadge(provider: VoiceProvider) -> some View {
+            let isSystem = provider == .system
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(isSystem ? Color.blue.opacity(0.2) : Color.purple.opacity(0.2))
+                    Image(systemName: isSystem ? "person.wave.2" : "sparkles")
+                        .foregroundColor(isSystem ? .blue : .purple)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .frame(width: 34, height: 34)
+                Text(isSystem ? "Device" : "Cloud")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.72))
+            }
+        }
+
+        private var titleBlock: some View {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(voice.name)
+                        .foregroundColor(.white)
+                        .font(.subheadline.weight(.semibold))
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.blue)
+                    }
+                }
+                Text(voice.subtitle)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.75))
+            }
+        }
+
+        private var previewButton: some View {
+            Button(action: onPreview) {
+                HStack(spacing: 6) {
+                    if isPlaying { WaveformMini().frame(width: 18, height: 14) }
+                    Image(systemName: isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                        .foregroundColor(.white)
+                        .font(.title3)
+                }
+            }
+        }
+    }
+
+    private struct SectionHeader: View {
+        let title: String
+        init(_ t: String) { title = t }
+        var body: some View {
+            Text(title)
+                .foregroundColor(.white.opacity(0.7))
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 4)
+        }
+    }
+}
+
+// Tiny waveform used in voice preview button (file-scope)
+private struct WaveformMini: View {
+    @State private var phase: CGFloat = 0
+    var body: some View {
+        GeometryReader { geo in
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<4, id: \.self) { i in
+                    Capsule()
+                        .fill(Color.white.opacity(0.9))
+                        .frame(width: (geo.size.width - 6)/4, height: barHeight(i, total: geo.size.height))
+                }
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.35).repeatForever(autoreverses: true)) {
+                    phase = 1
+                }
+            }
+        }
+    }
+    private func barHeight(_ i: Int, total: CGFloat) -> CGFloat {
+        let base = total * 0.4
+        let varr = total * 0.4
+        let s = sin(Date().timeIntervalSinceReferenceDate * 8 + Double(i))
+        return max(4, base + varr * CGFloat(abs(s)))
     }
 }
 
