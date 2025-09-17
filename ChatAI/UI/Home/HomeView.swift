@@ -650,28 +650,54 @@ private struct AccountActionCard: View {
 
                 // Removed search bar per request
 
-                // Feature cards grid (3 equal columns)
-                let columns = Array(repeating: GridItem(.flexible(minimum: 90), spacing: 12, alignment: .top), count: 3)
-                LazyVGrid(columns: columns, alignment: .center, spacing: 12) {
-                    // Files -> open document picker and route to Chat with attachment
-                    Button(action: { showDocPicker = true }) {
-                        FeatureCard(title: "Files", subtitle: "Upload", icon: "folder", accent: .blue)
+                // Feature cards (one per page, full width) with page indicator
+                TabView {
+                    // Page: Creative Studio
+                    VStack { 
+                        Button(action: { showImagePromptSheet = true }) {
+                            FeatureCard(title: "Creative Studio", subtitle: "Create", icon: "sparkles.rectangle.stack", accent: .pink)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .tag(0)
 
-                    // Web Links -> show URL input sheet, then navigate to Chat with prefilled text
-                    Button(action: { showLinkSheet = true }) {
-                        FeatureCard(title: "Web", subtitle: "Links", icon: "link", accent: .cyan)
+                    // Page: Files
+                    VStack { 
+                        Button(action: { showDocPicker = true }) {
+                            FeatureCard(title: "Files", subtitle: "Upload", icon: "folder", accent: .blue)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    NavigationLink {
-                        VoiceChatView()
-                    } label: {
-                        FeatureCard(title: "Voice", subtitle: "Chat", icon: "waveform", accent: .orange)
+                    .padding(.horizontal, 20)
+                    .tag(1)
+
+                    // Page: Web
+                    VStack { 
+                        Button(action: { showLinkSheet = true }) {
+                            FeatureCard(title: "Web", subtitle: "Links", icon: "link", accent: .cyan)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .tag(2)
+
+                    // Page: Voice
+                    VStack { 
+                        NavigationLink { VoiceChatView() } label: {
+                            FeatureCard(title: "Voice", subtitle: "Chat", icon: "waveform", accent: .orange)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 20)
+                    .tag(3)
                 }
-                .padding(.horizontal, 20)
+                .frame(height: 190)
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
                 .padding(.top, 10)
 
                 // Spacer area with centered text
