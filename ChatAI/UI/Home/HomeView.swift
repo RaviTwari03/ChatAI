@@ -875,9 +875,10 @@ private struct AccountActionCard: View {
                                 case .textAuto:
                                     TextScannerContainer(
                                         onText: { text in
-                                            scannedTextDraft = text
+                                            // Insert as-is into composer and keep keyboard active
+                                            homeDraft = text
                                             showScanner = false
-                                            showScanReview = true
+                                            DispatchQueue.main.async { isComposerFocused = true }
                                         },
                                         onCancel: { showScanner = false },
                                         languages: nil
@@ -885,9 +886,9 @@ private struct AccountActionCard: View {
                                 case .textEnglish:
                                     TextScannerContainer(
                                         onText: { text in
-                                            scannedTextDraft = text
+                                            homeDraft = text
                                             showScanner = false
-                                            showScanReview = true
+                                            DispatchQueue.main.async { isComposerFocused = true }
                                         },
                                         onCancel: { showScanner = false },
                                         languages: ["en"]
@@ -896,9 +897,9 @@ private struct AccountActionCard: View {
                                 case .barcode:
                                     BarcodeScannerContainer(
                                         onPayload: { payload in
-                                            scannedTextDraft = payload
+                                            homeDraft = payload
                                             showScanner = false
-                                            showScanReview = true
+                                            DispatchQueue.main.async { isComposerFocused = true }
                                         },
                                         onCancel: { showScanner = false }
                                     )

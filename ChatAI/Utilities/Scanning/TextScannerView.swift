@@ -23,18 +23,23 @@ struct TextScannerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> DataScannerViewController {
         let controller = DataScannerViewController(
             recognizedDataTypes: [.text(languages: languages ?? [])],
-            qualityLevel: .balanced,
-            recognizesMultipleItems: false,
+            qualityLevel: .accurate,
+            recognizesMultipleItems: true,
             isHighFrameRateTrackingEnabled: true,
             isPinchToZoomEnabled: true,
             isGuidanceEnabled: true
         )
         controller.delegate = context.coordinator
+        // Attempt to start scanning immediately; update will ensure if needed
+        try? controller.startScanning()
         return controller
     }
 
     func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {
-        // no-op
+        // Ensure scanning is running after presentation transitions
+        if !(uiViewController.isScanning) {
+            try? uiViewController.startScanning()
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -60,14 +65,19 @@ struct TextScannerView: UIViewControllerRepresentable {
             handle(item)
         }
 
+        func dataScanner(_ dataScanner: DataScannerViewController, didUpdate item: RecognizedItem, allItems: [RecognizedItem]) {
+            // Capture updates as the text becomes clearer
+            handle(item)
+        }
+
         func dataScannerDidDismiss(_ dataScanner: DataScannerViewController) {
             onCancel()
         }
 
         private func handle(_ item: RecognizedItem) {
             guard case .text(let textItem) = item else { return }
-            let value = textItem.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty else { return }
+            let value = textItem.transcript // keep formatting as-is
+            guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             // Avoid duplicate rapid callbacks for same content
             if value == lastOutput { return }
             lastOutput = value
@@ -83,7 +93,44 @@ struct TextScannerContainer: View {
     var languages: [String]? = nil
 
     var body: some View {
-        TextScannerView(onText: onText, onCancel: onCancel, languages: languages)
-            .ignoresSafeArea()
+        ZStack(alignment: .topLeading) {
+            TextScannerView(onText: { latest in
+                // capture latest text as-is
+                self.latestText = latest
+            }, onCancel: onCancel, languages: languages)
+                .ignoresSafeArea()
+            // Minimal in-scanner top bar with back button
+            HStack {
+                Button(action: onCancel) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.backward")
+                        Text("Back")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+                .foregroundColor(.white)
+                Spacer()
+                // Insert button: sends the aggregated latest captured text
+                Button(action: {
+                    let text = latestText
+                    onText(text)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "text.insert")
+                        Text("Insert")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 16)
+        }
     }
+
+    // MARK: - Private
+    @State private var latestText: String = ""
 }

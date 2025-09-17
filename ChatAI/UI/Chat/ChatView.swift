@@ -247,11 +247,17 @@ struct ChatView: View {
                         Button { showPhotosPicker = true } label: { Label("Attach Photo", systemImage: "photo") }
                         Button { showDocPicker = true } label: { Label("Attach File", systemImage: "doc") }
                     } label: {
-                        Image(systemName: (attachedData == nil) ? "square.and.arrow.up" : "checkmark.circle")
-                            .foregroundColor(.white)
-                            .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                        // Plus button replaces the old share icon but keeps the same actions
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.18))
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            Image(systemName: (attachedData == nil) ? "plus" : "checkmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .frame(width: 36, height: 36)
                     }
                     .onChange(of: pickedItem) { newItem in
                         Task {
