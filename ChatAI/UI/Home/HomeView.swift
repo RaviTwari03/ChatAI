@@ -653,8 +653,8 @@ private struct AccountActionCard: View {
                 // Feature cards (one per page, full width) with page indicator
                 TabView {
                     // Page: Creative Studio
-                    VStack { 
-                        Button(action: { showImagePromptSheet = true }) {
+                    VStack {
+                        NavigationLink { CreativeStudioView() } label: {
                             FeatureCard(title: "Creative Studio", subtitle: "Create", icon: "sparkles.rectangle.stack", accent: .pink)
                                 .frame(maxWidth: .infinity)
                         }

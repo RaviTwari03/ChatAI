@@ -9,10 +9,10 @@ import Foundation
 
 public enum VideoProvider: String, Codable, CaseIterable {
     case pika
+    case veo
     // case luma
     // case runway
     // case stability
-    // case veo
 }
 
 public enum VideoStatus: Equatable, Codable {
@@ -94,6 +94,7 @@ public enum VideoServiceFactory {
     public static func make(_ provider: VideoProvider) -> VideoService {
         switch provider {
         case .pika: return PikaVideoService()
+        case .veo: return VeoVideoService()
         }
     }
 }
