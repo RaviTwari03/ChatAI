@@ -466,9 +466,29 @@ private struct AccountActionCard: View {
         showScanModeSheet = false
         if #available(iOS 16.0, *) {
             if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
-                // Slight delay to let the sheet dismiss before presenting full screen cover
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    showScanner = true
+                // Ensure camera permission before presenting
+                let status = AVCaptureDevice.authorizationStatus(for: .video)
+                switch status {
+                case .authorized:
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { showScanner = true }
+                case .notDetermined:
+                    AVCaptureDevice.requestAccess(for: .video) { granted in
+                        DispatchQueue.main.async {
+                            if granted {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.showScanner = true }
+                            } else {
+                                self.alertTitle = "Camera Permission"
+                                self.alertMessage = "Camera access is required to scan text. Enable it in Settings > Privacy > Camera."
+                                self.showAlert = true
+                            }
+                        }
+                    }
+                case .denied, .restricted:
+                    alertTitle = "Camera Permission"
+                    alertMessage = "Camera access is denied. Enable it in Settings > Privacy > Camera."
+                    showAlert = true
+                @unknown default:
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { showScanner = true }
                 }
             } else {
                 alertTitle = "Scanner Unavailable"
@@ -558,6 +578,8 @@ private struct AccountActionCard: View {
     @State private var showCamera: Bool = false
     @State private var showWebSearchSheet: Bool = false
     @State private var webSearchText: String = ""
+    // Feature flags
+    private let showOCRButton: Bool = false
     // Plus menu
     @State private var showPlusMenu: Bool = false
     // Barcode scanner
@@ -761,11 +783,13 @@ private struct AccountActionCard: View {
                             Spacer()
                             HStack(spacing: 18) {
                                 // Scanner
-                                Button {
-                                    // Present custom scan options sheet (styled like PlusActionSheet)
-                                    showScanModeSheet = true
-                                } label: { Image(systemName: "viewfinder") }
-                                .font(.system(size: 16, weight: .semibold))
+                                if showOCRButton {
+                                    Button {
+                                        // Present custom scan options sheet (styled like PlusActionSheet)
+                                        showScanModeSheet = true
+                                    } label: { Image(systemName: "viewfinder") }
+                                    .font(.system(size: 16, weight: .semibold))
+                                }
                                 // Mic or Send toggle
                                 Button(action: {
                                     let canSend = !homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -893,18 +917,23 @@ private struct AccountActionCard: View {
                         PaywallView()
                     } label: { EmptyView() }
 
-                    // Full-screen scanner (OCR or Barcode based on selected mode)
-                    .fullScreenCover(isPresented: $showScanner) {
+                    // Scanner as sheet so the composer stays visible underneath
+                    .sheet(isPresented: $showScanner) {
                         if #available(iOS 16.0, *) {
                             Group {
                                 switch scanMode {
                                 case .textAuto:
                                     TextScannerContainer(
                                         onText: { text in
-                                            // Insert as-is into composer and keep keyboard active
-                                            homeDraft = text
-                                            showScanner = false
-                                            DispatchQueue.main.async { isComposerFocused = true }
+                                            // Append inserted text to composer (like Notes), keep scanner open
+                                            let insert = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            guard !insert.isEmpty else { return }
+                                            if homeDraft.isEmpty {
+                                                homeDraft = insert
+                                            } else {
+                                                let sep = homeDraft.hasSuffix(" ") || homeDraft.hasSuffix("\n") ? "" : " "
+                                                homeDraft += sep + insert
+                                            }
                                         },
                                         onCancel: { showScanner = false },
                                         languages: nil
@@ -912,9 +941,14 @@ private struct AccountActionCard: View {
                                 case .textEnglish:
                                     TextScannerContainer(
                                         onText: { text in
-                                            homeDraft = text
-                                            showScanner = false
-                                            DispatchQueue.main.async { isComposerFocused = true }
+                                            let insert = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            guard !insert.isEmpty else { return }
+                                            if homeDraft.isEmpty {
+                                                homeDraft = insert
+                                            } else {
+                                                let sep = homeDraft.hasSuffix(" ") || homeDraft.hasSuffix("\n") ? "" : " "
+                                                homeDraft += sep + insert
+                                            }
                                         },
                                         onCancel: { showScanner = false },
                                         languages: ["en"]
@@ -923,9 +957,14 @@ private struct AccountActionCard: View {
                                 case .barcode:
                                     BarcodeScannerContainer(
                                         onPayload: { payload in
-                                            homeDraft = payload
-                                            showScanner = false
-                                            DispatchQueue.main.async { isComposerFocused = true }
+                                            let insert = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            guard !insert.isEmpty else { return }
+                                            if homeDraft.isEmpty {
+                                                homeDraft = insert
+                                            } else {
+                                                let sep = homeDraft.hasSuffix(" ") || homeDraft.hasSuffix("\n") ? "" : " "
+                                                homeDraft += sep + insert
+                                            }
                                         },
                                         onCancel: { showScanner = false }
                                     )
@@ -935,6 +974,8 @@ private struct AccountActionCard: View {
                             EmptyView()
                         }
                     }
+                    .presentationDetents([.fraction(0.72), .large])
+                    .presentationDragIndicator(.hidden)
                     // Review & Edit sheet
                     .sheet(isPresented: $showScanReview) {
                         NavigationStack {

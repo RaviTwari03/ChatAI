@@ -21,10 +21,18 @@ struct TextScannerView: UIViewControllerRepresentable {
     var languages: [String]? = nil
 
     func makeUIViewController(context: Context) -> DataScannerViewController {
+        // Configure recognized data types with or without language bias
+        let recognizedTypes: Set<DataScannerViewController.RecognizedDataType> = {
+            if let l = languages, !l.isEmpty {
+                return [.text(languages: l)]
+            } else {
+                return [.text()]
+            }
+        }()
         let controller = DataScannerViewController(
-            recognizedDataTypes: [.text(languages: languages ?? [])],
+            recognizedDataTypes: recognizedTypes,
             qualityLevel: .accurate,
-            recognizesMultipleItems: true,
+            recognizesMultipleItems: false,
             isHighFrameRateTrackingEnabled: true,
             isPinchToZoomEnabled: true,
             isGuidanceEnabled: true
@@ -61,13 +69,11 @@ struct TextScannerView: UIViewControllerRepresentable {
         }
 
         func dataScanner(_ dataScanner: DataScannerViewController, didAdd item: RecognizedItem, allItems: [RecognizedItem]) {
-            // Trigger once when a new text item is detected
-            handle(item)
+            // no-op: selection is determined by user tap so the highlight is clear
         }
 
         func dataScanner(_ dataScanner: DataScannerViewController, didUpdate item: RecognizedItem, allItems: [RecognizedItem]) {
-            // Capture updates as the text becomes clearer
-            handle(item)
+            // no-op: avoid changing selection while scanning
         }
 
         func dataScannerDidDismiss(_ dataScanner: DataScannerViewController) {
@@ -128,6 +134,28 @@ struct TextScannerContainer: View {
             }
             .padding(.top, 14)
             .padding(.horizontal, 16)
+
+            // Removed center hint to ensure native highlight is clearly visible
+
+            // Bottom preview of the tapped (selected) text
+            VStack {
+                Spacer()
+                if !latestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Selected text")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                        Text(latestText)
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                            .lineLimit(3)
+                    }
+                    .padding(12)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 18)
+                }
+            }
         }
     }
 
