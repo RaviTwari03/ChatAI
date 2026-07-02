@@ -51,19 +51,7 @@ A modern **AI-powered iOS application** built using **SwiftUI** that delivers in
 
 ---
 
-# 📸 Screenshots
 
-<p align="center">
-
-| Home | AI Chat | Profile |
-|------|---------|----------|
-| <img src="Screenshots/home.png" width="230"/> | <img src="Screenshots/chat.png" width="230"/> | <img src="Screenshots/profile.png" width="230"/> |
-
-</p>
-
-> **Replace the above screenshots with your own images.**
-
----
 
 # 🏗 Architecture
 
